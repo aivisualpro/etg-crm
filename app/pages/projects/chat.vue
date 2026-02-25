@@ -2,13 +2,57 @@
 import { toast } from 'vue-sonner'
 
 const { setHeader } = usePageHeader()
-setHeader({ title: 'Live Chat', icon: 'i-lucide-message-circle', description: 'Real-time customer communication' })
+setHeader({ title: 'Project Chat', icon: 'i-lucide-message-circle' })
+
+// ─── Date range (default = current week Mon-Sun) ────────────
+function getWeekRange(date: Date): { from: string, to: string } {
+  const d = new Date(date)
+  const day = d.getDay()
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + mondayOffset)
+  monday.setHours(0, 0, 0, 0)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return {
+    from: monday.toISOString().split('T')[0]!,
+    to: sunday.toISOString().split('T')[0]!,
+  }
+}
+
+const currentWeekAnchor = ref(new Date())
+const dateRange = computed(() => getWeekRange(currentWeekAnchor.value))
+
+function prevWeek() {
+  const d = new Date(currentWeekAnchor.value)
+  d.setDate(d.getDate() - 7)
+  currentWeekAnchor.value = d
+  fetchChats()
+}
+
+function nextWeek() {
+  const d = new Date(currentWeekAnchor.value)
+  d.setDate(d.getDate() + 7)
+  currentWeekAnchor.value = d
+  fetchChats()
+}
+
+function goThisWeek() {
+  currentWeekAnchor.value = new Date()
+  fetchChats()
+}
+
+const dateLabel = computed(() => {
+  const from = new Date(dateRange.value.from + 'T00:00:00')
+  const to = new Date(dateRange.value.to + 'T00:00:00')
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+  return `${from.toLocaleDateString('en-US', opts)} – ${to.toLocaleDateString('en-US', { ...opts, year: 'numeric' })}`
+})
 
 // ─── State ──────────────────────────────────────────────────
 const loading = ref(true)
 const allMessages = ref<any[]>([])
 const activeContactId = ref('')
-const messageInput = ref('')
 const searchQuery = ref('')
 const filterTab = ref<'all' | 'active' | 'closed'>('all')
 const chatAreaRef = ref<HTMLElement | null>(null)
@@ -39,19 +83,21 @@ function resolveName(email: string): string {
 // ─── Fetch Chats ────────────────────────────────────────────
 async function fetchChats() {
   loading.value = true
+  activeContactId.value = ''
   try {
     const [chatData] = await Promise.all([
-      $fetch<{ success: boolean, active: any[], closed: any[] }>('/api/bigquery/chats'),
+      $fetch<{ success: boolean, active: any[], closed: any[] }>('/api/bigquery/chats', {
+        params: { from: dateRange.value.from, to: dateRange.value.to },
+      }),
       fetchUsers(),
     ])
     if (chatData.success) {
-      // Tag each message with its source
       const active = chatData.active.map((m: any) => ({ ...m, _source: 'active' as const }))
       const closed = chatData.closed.map((m: any) => ({ ...m, _source: 'closed' as const }))
       allMessages.value = [...active, ...closed]
     }
   }
-  catch (e: any) {
+  catch {
     toast.error('Failed to load chats')
   }
   finally {
@@ -241,6 +287,22 @@ const closedCount = computed(() => conversations.value.filter(c => c.source === 
 
     <!-- ═══════════ LEFT SIDEBAR ═══════════ -->
     <div class="w-[340px] shrink-0 border-r border-border/50 flex flex-col bg-card/40">
+      <!-- Week Navigation -->
+      <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30">
+        <Button variant="ghost" size="icon" class="size-7" @click="prevWeek">
+          <Icon name="i-lucide-chevron-left" class="size-4" />
+        </Button>
+        <button
+          class="text-xs font-semibold text-center hover:text-primary transition-colors"
+          @click="goThisWeek"
+        >
+          {{ dateLabel }}
+        </button>
+        <Button variant="ghost" size="icon" class="size-7" @click="nextWeek">
+          <Icon name="i-lucide-chevron-right" class="size-4" />
+        </Button>
+      </div>
+
       <!-- Search -->
       <div class="p-3 border-b border-border/30">
         <div class="relative">

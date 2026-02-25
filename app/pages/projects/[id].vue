@@ -16,6 +16,12 @@ const activeTab = ref('overview')
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
 
+// Chat state
+const chatMessages = ref<any[]>([])
+const chatLoading = ref(false)
+const chatLoaded = ref(false)
+const activeChatId = ref('')
+
 // ─── Lookup maps ────────────────────────────────────────────
 const userNameMap = ref<Record<string, string>>({})
 const customerNameMap = ref<Record<string, string>>({})
@@ -230,12 +236,138 @@ const overviewFields = computed(() => {
   ].filter(f => f.value && f.value !== '—')
 })
 
+// ─── Chat helpers ───────────────────────────────────────────
+interface ChatConversation {
+  chatId: string
+  head: string
+  secondary: string
+  users: string
+  source: 'active' | 'closed'
+  messages: any[]
+  lastTime: Date
+}
+
+async function fetchProjectChats() {
+  if (chatLoaded.value || chatLoading.value) return
+  chatLoading.value = true
+  try {
+    const data = await $fetch<{ success: boolean, messages: any[] }>('/api/bigquery/project-chats', {
+      params: { projectId: projectId.value },
+    })
+    if (data.success) {
+      chatMessages.value = data.messages
+    }
+  }
+  catch {
+    toast.error('Failed to load chat messages')
+  }
+  finally {
+    chatLoading.value = false
+    chatLoaded.value = true
+  }
+}
+
+// Lazy-load chat data when tab is clicked
+watch(activeTab, (tab) => {
+  if (tab === 'chat') fetchProjectChats()
+})
+
+const chatConversations = computed(() => {
+  const map = new Map<string, ChatConversation>()
+  for (const msg of chatMessages.value) {
+    const chatId = msg.ChatID
+    if (!chatId) continue
+    const ts = msg.TimeStamp?.value || msg.TimeStamp
+    const date = ts ? new Date(ts) : new Date(0)
+    if (!map.has(chatId)) {
+      map.set(chatId, {
+        chatId,
+        head: msg['Chat Head'] || '',
+        secondary: msg.Secondary || '',
+        users: msg.Users || '',
+        source: msg._source || 'active',
+        messages: [],
+        lastTime: date,
+      })
+    }
+    const conv = map.get(chatId)!
+    conv.messages.push({ ...msg, _date: date })
+    if (date > conv.lastTime) conv.lastTime = date
+  }
+  for (const conv of map.values()) {
+    conv.messages.sort((a: any, b: any) => a._date.getTime() - b._date.getTime())
+  }
+  return Array.from(map.values()).sort((a, b) => b.lastTime.getTime() - a.lastTime.getTime())
+})
+
+const activeConversation = computed(() => {
+  return chatConversations.value.find(c => c.chatId === activeChatId.value) || null
+})
+
+// Auto-select first conversation
+watch(chatConversations, (convs) => {
+  if (convs.length > 0 && !activeConversation.value) {
+    activeChatId.value = convs[0]!.chatId
+  }
+}, { immediate: true })
+
+function chatConvTitle(conv: ChatConversation): string {
+  if (conv.head) return conv.head.replace(/^Chat room create by\s*/i, '').trim() || conv.head
+  if (conv.secondary) return conv.secondary.split('(')[0]?.trim() || conv.secondary
+  return 'Conversation'
+}
+
+function chatInitials(name: string): string {
+  return name.split(/[\s@]/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2)
+}
+
+const chatAvatarColors = [
+  'bg-violet-500', 'bg-sky-500', 'bg-emerald-500', 'bg-amber-500',
+  'bg-rose-500', 'bg-indigo-500', 'bg-teal-500', 'bg-pink-500',
+]
+
+function chatAvatarColor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  return chatAvatarColors[Math.abs(hash) % chatAvatarColors.length]!
+}
+
+function chatFormatTime(date: Date): string {
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+function chatFormatDate(date: Date): string {
+  const today = new Date()
+  if (date.toDateString() === today.toDateString()) return 'Today'
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function chatShowDateSep(msgs: any[], idx: number): boolean {
+  if (idx === 0) return true
+  return msgs[idx - 1]._date.toDateString() !== msgs[idx]._date.toDateString()
+}
+
+function chatRelativeTime(date: Date): string {
+  const diff = Date.now() - date.getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.floor(diff / 3600000)
+  if (hrs < 24) return `${hrs}h`
+  const days = Math.floor(diff / 86400000)
+  if (days < 7) return `${days}d`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 const tabs = [
   { id: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { id: 'team', label: 'Team', icon: 'i-lucide-users' },
   { id: 'equipment', label: 'Equipment', icon: 'i-lucide-cpu' },
   { id: 'timeline', label: 'Timeline', icon: 'i-lucide-clock' },
   { id: 'statuses', label: 'Statuses', icon: 'i-lucide-activity' },
+  { id: 'chat', label: 'Chat', icon: 'i-lucide-message-circle' },
 ]
 </script>
 
@@ -553,6 +685,157 @@ const tabs = [
                 </Table>
               </CardContent>
             </Card>
+          </template>
+
+          <!-- CHAT TAB -->
+          <template v-if="activeTab === 'chat'">
+            <!-- Loading -->
+            <div v-if="chatLoading" class="flex flex-col items-center justify-center py-12 gap-2">
+              <Icon name="i-lucide-loader-2" class="size-6 animate-spin text-primary" />
+              <p class="text-xs text-muted-foreground">Loading chat messages…</p>
+            </div>
+
+            <!-- No chats -->
+            <div v-else-if="chatConversations.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
+              <div class="size-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+                <Icon name="i-lucide-message-circle" class="size-7 text-muted-foreground/40" />
+              </div>
+              <p class="text-sm font-medium text-muted-foreground">No chat messages</p>
+              <p class="text-xs text-muted-foreground/60 mt-1">No conversations found for this project</p>
+            </div>
+
+            <!-- Chat UI -->
+            <div v-else class="flex gap-4 min-h-[500px]">
+              <!-- Conversation List -->
+              <Card class="w-[260px] shrink-0 flex flex-col overflow-hidden">
+                <CardHeader class="pb-2 px-3 pt-3">
+                  <CardTitle class="text-xs font-semibold flex items-center gap-1.5">
+                    <Icon name="i-lucide-message-circle" class="size-3.5 text-primary" />
+                    Threads
+                    <Badge variant="outline" class="text-[9px] ml-auto">{{ chatConversations.length }}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <div class="flex-1 overflow-y-auto">
+                  <div
+                    v-for="conv in chatConversations"
+                    :key="conv.chatId"
+                    class="px-3 py-2.5 cursor-pointer border-b border-border/20 transition-all duration-200"
+                    :class="activeChatId === conv.chatId
+                      ? 'bg-primary/8 border-l-2 border-l-primary'
+                      : 'hover:bg-muted/40 border-l-2 border-l-transparent'"
+                    @click="activeChatId = conv.chatId"
+                  >
+                    <div class="flex items-center gap-2">
+                      <Avatar class="size-7 shrink-0">
+                        <AvatarFallback
+                          :class="chatAvatarColor(conv.chatId)"
+                          class="text-[8px] font-bold text-white"
+                        >
+                          {{ chatInitials(chatConvTitle(conv)) }}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between">
+                          <span class="text-[11px] font-semibold truncate max-w-[130px]">{{ chatConvTitle(conv) }}</span>
+                          <span class="text-[9px] text-muted-foreground shrink-0 ml-1">{{ chatRelativeTime(conv.lastTime) }}</span>
+                        </div>
+                        <p class="text-[10px] text-muted-foreground truncate">{{ conv.messages.length }} messages</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <!-- Messages -->
+              <Card class="flex-1 flex flex-col overflow-hidden">
+                <template v-if="activeConversation">
+                  <!-- Header -->
+                  <CardHeader class="pb-2 border-b">
+                    <div class="flex items-center justify-between">
+                      <CardTitle class="text-sm font-semibold flex items-center gap-2">
+                        {{ chatConvTitle(activeConversation) }}
+                        <Badge variant="outline" class="text-[9px]" :class="activeConversation.source === 'active' ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10' : 'text-zinc-500 border-zinc-400/30 bg-zinc-400/10'">
+                          {{ activeConversation.source === 'active' ? 'Active' : 'Closed' }}
+                        </Badge>
+                      </CardTitle>
+                      <span class="text-[10px] text-muted-foreground">{{ activeConversation.messages.length }} messages</span>
+                    </div>
+                    <!-- Participants -->
+                    <div v-if="activeConversation.users" class="flex items-center gap-1 mt-1 flex-wrap">
+                      <Badge
+                        v-for="email in activeConversation.users.split(',').map(e => e.trim()).filter(Boolean).slice(0, 6)"
+                        :key="email"
+                        variant="outline"
+                        class="text-[8px] py-0 h-3.5"
+                      >
+                        {{ resolveName(email) }}
+                      </Badge>
+                      <span
+                        v-if="activeConversation.users.split(',').filter(Boolean).length > 6"
+                        class="text-[8px] text-muted-foreground"
+                      >
+                        +{{ activeConversation.users.split(',').filter(Boolean).length - 6 }} more
+                      </span>
+                    </div>
+                  </CardHeader>
+
+                  <!-- Message list -->
+                  <CardContent class="flex-1 overflow-y-auto p-4 space-y-1">
+                    <template v-for="(msg, idx) in activeConversation.messages" :key="msg.MessageID || idx">
+                      <!-- Date separator -->
+                      <div v-if="chatShowDateSep(activeConversation.messages, idx)" class="flex items-center justify-center py-2">
+                        <span class="px-2.5 py-0.5 text-[9px] font-semibold text-muted-foreground bg-muted/60 rounded-full border border-border/30 uppercase tracking-wider">
+                          {{ chatFormatDate(msg._date) }}
+                        </span>
+                      </div>
+
+                      <!-- Message -->
+                      <div class="flex items-start gap-2">
+                        <div v-if="idx === 0 || activeConversation.messages[idx - 1]?.Email !== msg.Email" class="shrink-0 mt-0.5">
+                          <Avatar class="size-6">
+                            <AvatarFallback
+                              :class="chatAvatarColor(msg.Email || '')"
+                              class="text-[7px] font-bold text-white"
+                            >
+                              {{ chatInitials(resolveName(msg.Email)) }}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <div v-else class="w-6 shrink-0" />
+
+                        <div class="max-w-[75%]">
+                          <div
+                            v-if="idx === 0 || activeConversation.messages[idx - 1]?.Email !== msg.Email"
+                            class="pl-0.5 pb-0.5 flex items-center gap-1.5"
+                          >
+                            <span class="text-[10px] font-semibold">{{ resolveName(msg.Email) }}</span>
+                          </div>
+                          <div class="rounded-xl px-3 py-1.5 text-xs leading-relaxed bg-muted/70 border border-border/30 rounded-bl-sm">
+                            <!-- Attachment -->
+                            <div v-if="msg.Attachment" class="flex items-center gap-1.5 mb-1">
+                              <Icon name="lucide:paperclip" class="size-3 text-primary" />
+                              <a
+                                v-if="msg.Attachment.startsWith('http')"
+                                :href="msg.Attachment"
+                                target="_blank"
+                                class="text-[10px] text-primary underline truncate max-w-[180px]"
+                              >
+                                Attachment
+                              </a>
+                              <span v-else class="text-[10px] text-muted-foreground truncate">{{ msg.Attachment }}</span>
+                            </div>
+                            <template v-if="msg.Chat">{{ msg.Chat }}</template>
+                            <div class="flex items-center justify-end mt-0.5 -mb-0.5">
+                              <span class="text-[8px] text-muted-foreground/50">{{ chatFormatTime(msg._date) }}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </CardContent>
+                </template>
+              </Card>
+            </div>
           </template>
 
         </div>

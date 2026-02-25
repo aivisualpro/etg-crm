@@ -2,6 +2,24 @@ import type { NavMenu, NavMenuItems } from '~/types/nav'
 
 export const navMenu: NavMenu[] = [
   {
+    heading: 'General',
+    headingKey: 'nav.general',
+    items: [
+      {
+        title: 'Home',
+        titleKey: 'nav.dashboard',
+        icon: 'i-lucide-layout-dashboard',
+        link: '/',
+      },
+      {
+        title: 'Customers',
+        titleKey: 'nav.customers',
+        icon: 'i-lucide-users',
+        link: '/customers',
+      },
+    ],
+  },
+  {
     heading: 'Administration',
     headingKey: 'nav.administration',
     items: [
@@ -20,24 +38,6 @@ export const navMenu: NavMenu[] = [
     ],
   },
   {
-    heading: 'General',
-    headingKey: 'nav.general',
-    items: [
-      {
-        title: 'Dashboard',
-        titleKey: 'nav.dashboard',
-        icon: 'i-lucide-layout-dashboard',
-        link: '/',
-      },
-      {
-        title: 'Customers',
-        titleKey: 'nav.customers',
-        icon: 'i-lucide-users',
-        link: '/customers',
-      },
-    ],
-  },
-  {
     heading: 'Project Management',
     headingKey: 'nav.projectManagement',
     items: [
@@ -51,6 +51,12 @@ export const navMenu: NavMenu[] = [
         title: 'Events',
         icon: 'i-lucide-calendar-days',
         link: '/events/calendar',
+      },
+      {
+        title: 'Chat',
+        titleKey: 'nav.liveChat',
+        icon: 'i-lucide-message-circle',
+        link: '/projects/chat',
       },
       {
         title: 'Tasks',
@@ -89,18 +95,6 @@ export const navMenu: NavMenu[] = [
         titleKey: 'nav.tickets',
         icon: 'i-lucide-ticket',
         link: '/support/tickets',
-      },
-      {
-        title: 'Knowledge Base',
-        titleKey: 'nav.knowledgeBase',
-        icon: 'i-lucide-book-open',
-        link: '/support/knowledge-base',
-      },
-      {
-        title: 'Live Chat',
-        titleKey: 'nav.liveChat',
-        icon: 'i-lucide-message-circle',
-        link: '/support/chat',
       },
     ],
   },
@@ -175,11 +169,4 @@ export const navMenu: NavMenu[] = [
   },
 ]
 
-export const navMenuBottom: NavMenuItems = [
-  {
-    title: 'Help & Support',
-    titleKey: 'nav.helpSupport',
-    icon: 'i-lucide-circle-help',
-    link: '/docs',
-  },
-]
+export const navMenuBottom: NavMenuItems = []
