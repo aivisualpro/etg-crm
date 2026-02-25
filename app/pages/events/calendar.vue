@@ -28,6 +28,55 @@ function openEventDetail(evt: any) {
   showDetail.value = true
 }
 
+// ── Day detail sheet ("+ more" view) ─────────────────────────
+const showDaySheet = ref(false)
+const daySheetDate = ref<Date | null>(null)
+const daySheetKey = ref('')
+const daySheetSearch = ref('')
+
+function openDaySheet(date: Date, dateKey: string) {
+  daySheetDate.value = date
+  daySheetKey.value = dateKey
+  daySheetSearch.value = ''
+  showDaySheet.value = true
+}
+
+const daySheetEvents = computed(() => {
+  const evts = eventsForDayFiltered(daySheetKey.value)
+  if (!daySheetSearch.value) return evts
+  const q = daySheetSearch.value.toLowerCase()
+  return evts.filter(e =>
+    (e['Event Type'] || '').toLowerCase().includes(q)
+    || (e['Event Status'] || '').toLowerCase().includes(q)
+    || (e['Customer Address'] || e['Event Address'] || '').toLowerCase().includes(q)
+    || (e.Branch || '').toLowerCase().includes(q)
+    || (e.Vendor || '').toLowerCase().includes(q)
+    || (e['Event Description'] || '').toLowerCase().includes(q),
+  )
+})
+
+const daySheetTypeSummary = computed(() => {
+  const evts = eventsForDayFiltered(daySheetKey.value)
+  const counts: Record<string, number> = {}
+  evts.forEach(e => {
+    const type = e['Event Type'] || 'Other'
+    counts[type] = (counts[type] || 0) + 1
+  })
+  return Object.entries(counts)
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count)
+})
+
+function formatDaySheetDate(d: Date | null): string {
+  if (!d) return ''
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function openEventFromSheet(evt: any) {
+  showDaySheet.value = false
+  nextTick(() => openEventDetail(evt))
+}
+
 // ── User name lookup ─────────────────────────────────────────
 const userNameMap = ref<Record<string, string>>({})
 
@@ -147,11 +196,7 @@ const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 // Get events for a specific day
 function eventsForDay(dateKey: string): any[] {
-  return events.value.filter((e) => {
-    if (!e._startDate) return false
-    const eKey = e._startDate.toISOString().split('T')[0]
-    return eKey === dateKey
-  })
+  return eventsByDateKey.value.get(dateKey) || []
 }
 
 function isToday(date: Date): boolean {
@@ -304,11 +349,21 @@ const filteredEvents = computed(() => {
   return events.value.filter(e => activeFilters.value.has(e['Event Type']))
 })
 
+// Pre-index events by date key for O(1) lookups instead of O(n) per cell
+const eventsByDateKey = computed(() => {
+  const map = new Map<string, any[]>()
+  for (const e of filteredEvents.value) {
+    if (!e._startDate) continue
+    const key = e._startDate.toISOString().split('T')[0]!
+    const arr = map.get(key)
+    if (arr) arr.push(e)
+    else map.set(key, [e])
+  }
+  return map
+})
+
 function eventsForDayFiltered(dateKey: string): any[] {
-  return filteredEvents.value.filter((e) => {
-    if (!e._startDate) return false
-    return e._startDate.toISOString().split('T')[0] === dateKey
-  })
+  return eventsByDateKey.value.get(dateKey) || []
 }
 
 // ── Week view helpers ────────────────────────────────────────
@@ -331,11 +386,8 @@ const weekDates = computed(() => {
 const hours = Array.from({ length: 16 }, (_, i) => i + 6) // 6 AM to 9 PM
 
 function eventsForWeekDay(date: Date): any[] {
-  const key = date.toISOString().split('T')[0]
-  return filteredEvents.value.filter((e) => {
-    if (!e._startDate) return false
-    return e._startDate.toISOString().split('T')[0] === key
-  })
+  const key = date.toISOString().split('T')[0]!
+  return eventsByDateKey.value.get(key) || []
 }
 
 function eventTopPx(event: any): number {
@@ -502,7 +554,7 @@ const totalEventsThisMonth = computed(() => {
                 <button
                   v-if="eventsForDayFiltered(day.key).length > 3"
                   class="cal-event-more"
-                  @click.stop=""
+                  @click.stop="openDaySheet(day.date, day.key)"
                 >
                   +{{ eventsForDayFiltered(day.key).length - 3 }} more
                 </button>
@@ -700,6 +752,137 @@ const totalEventsThisMonth = computed(() => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <!-- ── Day Detail Sheet ("+ more" view) ──────────────── -->
+      <Sheet v-model:open="showDaySheet">
+        <SheetContent side="right" class="!w-full !max-w-lg sm:!max-w-lg p-0 flex flex-col">
+          <!-- Header -->
+          <div class="shrink-0 border-b px-5 pt-5 pb-4 space-y-3">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center justify-center size-10 rounded-xl bg-primary/10">
+                <Icon name="i-lucide-calendar-days" class="size-5 text-primary" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <SheetTitle class="text-base font-semibold leading-tight">
+                  {{ formatDaySheetDate(daySheetDate) }}
+                </SheetTitle>
+                <SheetDescription class="text-xs text-muted-foreground mt-0.5">
+                  {{ eventsForDayFiltered(daySheetKey).length }} events scheduled
+                </SheetDescription>
+              </div>
+            </div>
+
+            <!-- Type summary pills -->
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="ts in daySheetTypeSummary"
+                :key="ts.type"
+                class="day-sheet-type-pill"
+                :class="[getEventColor(ts.type).bg, getEventColor(ts.type).text, getEventColor(ts.type).border]"
+                @click="daySheetSearch = daySheetSearch === ts.type ? '' : ts.type"
+              >
+                <span class="size-1.5 rounded-full shrink-0" :class="getEventColor(ts.type).dot" />
+                {{ ts.type }}
+                <span class="day-sheet-type-count">{{ ts.count }}</span>
+              </button>
+            </div>
+
+            <!-- Search -->
+            <div class="relative">
+              <Icon name="i-lucide-search" class="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+              <input
+                v-model="daySheetSearch"
+                type="text"
+                placeholder="Search events..."
+                class="w-full h-8 pl-9 pr-3 rounded-lg border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+              >
+              <button
+                v-if="daySheetSearch"
+                class="absolute right-2 top-1/2 -translate-y-1/2 size-5 flex items-center justify-center rounded-md hover:bg-muted transition-colors"
+                @click="daySheetSearch = ''"
+              >
+                <Icon name="i-lucide-x" class="size-3 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Events list -->
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <div v-if="daySheetEvents.length === 0" class="flex flex-col items-center justify-center py-16 px-6 text-center">
+              <Icon name="i-lucide-calendar-x" class="size-10 text-muted-foreground/40 mb-3" />
+              <p class="text-sm font-medium text-muted-foreground">No matching events</p>
+              <p class="text-xs text-muted-foreground/60 mt-1">Try adjusting your search term</p>
+            </div>
+
+            <div v-else class="divide-y">
+              <button
+                v-for="(evt, idx) in daySheetEvents"
+                :key="evt['Event  ID'] || idx"
+                class="day-sheet-event-card group"
+                @click="openEventFromSheet(evt)"
+              >
+                <!-- Left accent bar -->
+                <div class="day-sheet-accent" :class="getEventColor(evt['Event Type']).dot" />
+
+                <!-- Content -->
+                <div class="flex-1 min-w-0 py-3 pr-4">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold" :class="getEventColor(evt['Event Type']).text">
+                      {{ evt['Event Type'] || 'Event' }}
+                    </span>
+                    <Badge v-if="evt['Event Status']" variant="outline" class="text-[9px] px-1.5 py-0 h-4">
+                      {{ evt['Event Status'] }}
+                    </Badge>
+                    <span class="text-[10px] text-muted-foreground ml-auto tabular-nums shrink-0">
+                      {{ formatTime(evt._startDate) }}
+                      <template v-if="evt._endDate"> – {{ formatTime(evt._endDate) }}</template>
+                    </span>
+                  </div>
+
+                  <!-- Details row -->
+                  <div class="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                    <span v-if="evt['Customer Address'] || evt['Event Address']" class="flex items-center gap-1 truncate max-w-[200px]">
+                      <Icon name="i-lucide-map-pin" class="size-3 shrink-0" />
+                      {{ evt['Customer Address'] || evt['Event Address'] }}
+                    </span>
+                    <span v-if="evt.Branch" class="flex items-center gap-1 shrink-0">
+                      <Icon name="i-lucide-building-2" class="size-3 shrink-0" />
+                      {{ evt.Branch }}
+                    </span>
+                    <span v-if="evt.Vendor" class="flex items-center gap-1 shrink-0">
+                      <Icon name="i-lucide-hard-hat" class="size-3 shrink-0" />
+                      {{ evt.Vendor }}
+                    </span>
+                  </div>
+
+                  <!-- Crew row -->
+                  <div v-if="evt.Installers || evt.Technicians" class="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/70">
+                    <span v-if="evt.Installers" class="flex items-center gap-1">
+                      <Icon name="i-lucide-users" class="size-2.5 shrink-0" />
+                      {{ resolveName(evt.Installers) }}
+                    </span>
+                    <span v-if="evt.Technicians" class="flex items-center gap-1">
+                      <Icon name="i-lucide-wrench" class="size-2.5 shrink-0" />
+                      {{ resolveName(evt.Technicians) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Arrow -->
+                <Icon name="i-lucide-chevron-right" class="size-4 text-muted-foreground/30 group-hover:text-foreground/60 transition-colors shrink-0 mr-3" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="shrink-0 border-t px-5 py-3 flex items-center justify-between text-xs text-muted-foreground">
+            <span>{{ daySheetEvents.length }} of {{ eventsForDayFiltered(daySheetKey).length }} events</span>
+            <Button variant="ghost" size="sm" class="h-7 text-xs" @click="showDaySheet = false">
+              Close
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   </EventsLayout>
 </template>
@@ -962,5 +1145,62 @@ const totalEventsThisMonth = computed(() => {
 .cal-detail-value {
   font-size: 0.8125rem;
   color: var(--foreground);
+}
+
+/* ── Day Sheet ───────────────────────────────────────────── */
+.day-sheet-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.day-sheet-type-pill:hover {
+  opacity: 0.8;
+  transform: scale(1.03);
+}
+
+.day-sheet-type-count {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  opacity: 0.7;
+  min-width: 1rem;
+  text-align: center;
+  padding: 0 0.15rem;
+  background: rgba(0,0,0,0.06);
+  border-radius: 9999px;
+}
+
+:root.dark .day-sheet-type-count {
+  background: rgba(255,255,255,0.08);
+}
+
+.day-sheet-event-card {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  text-align: left;
+  transition: background 0.15s;
+  cursor: pointer;
+  position: relative;
+}
+
+.day-sheet-event-card:hover {
+  background: var(--muted);
+}
+
+.day-sheet-accent {
+  width: 3px;
+  align-self: stretch;
+  border-radius: 0 2px 2px 0;
+  margin-right: 12px;
+  flex-shrink: 0;
 }
 </style>

@@ -78,72 +78,7 @@ export const navMenu: NavMenu[] = [
       },
     ],
   },
-  {
-    heading: 'Sales & Commerce',
-    headingKey: 'nav.salesCommerce',
-    items: [
-      {
-        title: 'Invoices',
-        titleKey: 'nav.invoices',
-        icon: 'i-lucide-receipt',
-        link: '/sales/invoices',
-      },
-    ],
-  },
-  {
-    heading: 'Finance & Accounting',
-    headingKey: 'nav.financeAccounting',
-    items: [
-      {
-        title: 'Accounts',
-        titleKey: 'nav.accounts',
-        icon: 'i-lucide-wallet',
-        link: '/finance/accounts',
-      },
-      {
-        title: 'Transactions',
-        titleKey: 'nav.transactions',
-        icon: 'i-lucide-arrow-right-left',
-        link: '/finance/transactions',
-      },
-      {
-        title: 'Expenses',
-        titleKey: 'nav.expenses',
-        icon: 'i-lucide-credit-card',
-        link: '/finance/expenses',
-      },
-      {
-        title: 'Tax Management',
-        titleKey: 'nav.taxManagement',
-        icon: 'i-lucide-percent',
-        link: '/finance/taxes',
-      },
-      {
-        title: 'Balance Sheet',
-        titleKey: 'nav.balanceSheet',
-        icon: 'i-lucide-landmark',
-        link: '/finance/balance-sheet',
-      },
-      {
-        title: 'Income Statement',
-        titleKey: 'nav.incomeStatement',
-        icon: 'i-lucide-receipt',
-        link: '/finance/income-statement',
-      },
-      {
-        title: 'Financial Ratios',
-        titleKey: 'nav.financialRatios',
-        icon: 'i-lucide-chart-no-axes-combined',
-        link: '/finance/ratios',
-      },
-      {
-        title: 'Business Health',
-        titleKey: 'nav.businessHealth',
-        icon: 'i-lucide-heart-pulse',
-        link: '/finance/business-health',
-      },
-    ],
-  },
+
 
   {
     heading: 'Support',
@@ -190,6 +125,51 @@ export const navMenu: NavMenu[] = [
         titleKey: 'nav.hrReports',
         icon: 'i-lucide-file-bar-chart',
         link: '/reports/hr',
+      },
+      {
+        title: 'Ready To Fund Report',
+        icon: 'i-lucide-badge-dollar-sign',
+        link: '/reports/ready-to-fund',
+      },
+      {
+        title: 'Custom Reports',
+        icon: 'i-lucide-file-sliders',
+        link: '/reports/custom',
+      },
+      {
+        title: 'Finance PTO Report',
+        icon: 'i-lucide-calculator',
+        link: '/reports/finance-pto',
+      },
+      {
+        title: 'General Report',
+        icon: 'i-lucide-clipboard-list',
+        link: '/reports/general',
+      },
+      {
+        title: 'Finance Report',
+        icon: 'i-lucide-wallet',
+        link: '/reports/finance',
+      },
+      {
+        title: 'PM Weekly Report',
+        icon: 'i-lucide-calendar-range',
+        link: '/reports/pm-weekly',
+      },
+      {
+        title: 'Permit / Document Report',
+        icon: 'i-lucide-file-check',
+        link: '/reports/permit-document',
+      },
+      {
+        title: 'PTO Expire 1st Notification',
+        icon: 'i-lucide-bell',
+        link: '/reports/pto-expire-1st',
+      },
+      {
+        title: 'PTO Expire 2nd Notification',
+        icon: 'i-lucide-bell-ring',
+        link: '/reports/pto-expire-2nd',
       },
     ],
   },

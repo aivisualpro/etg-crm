@@ -6,130 +6,410 @@ const { setHeader } = usePageHeader()
 setHeader({ title: 'Financial Reports', description: 'Complete financial analytics and performance insights', icon: 'i-lucide-pie-chart' })
 
 const activeTab = ref('pnl')
+const loading = ref(true)
+const allProjects = ref<any[]>([])
 
-// ── KPIs ───────────────────────────────────────────
-const kpis = ref([
-  { label: 'Total Revenue', value: 0, target: 12850000, prefix: '$', suffix: '', change: 14.2, icon: 'i-lucide-trending-up', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-  { label: 'Net Income', value: 0, target: 2288000, prefix: '$', suffix: '', change: 21.5, icon: 'i-lucide-circle-dollar-sign', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-  { label: 'Gross Margin', value: 0, target: 68.4, prefix: '', suffix: '%', change: 2.1, icon: 'i-lucide-percent', color: 'text-violet-500', bg: 'bg-violet-500/10' },
-  { label: 'Operating Expenses', value: 0, target: 6380000, prefix: '$', suffix: '', change: 8.4, icon: 'i-lucide-receipt', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-  { label: 'EBITDA', value: 0, target: 3215000, prefix: '$', suffix: '', change: 16.8, icon: 'i-lucide-landmark', color: 'text-pink-500', bg: 'bg-pink-500/10' },
-  { label: 'Cash on Hand', value: 0, target: 4680000, prefix: '$', suffix: '', change: 11.2, icon: 'i-lucide-wallet', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
-])
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-onMounted(() => { kpis.value = kpis.value.map(k => ({ ...k, value: k.target })) })
+// ─── Fetch real project data ────────────────────────
+async function fetchData() {
+  loading.value = true
+  try {
+    const data = await $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects')
+    if (data.success) allProjects.value = data.projects
+  }
+  catch {}
+  finally {
+    loading.value = false
+  }
+}
+onMounted(fetchData)
 
-// ── P&L Statement ─────────────────────────────────
-const pnlData = [
-  { category: 'Revenue', items: [
-    { name: 'Product Revenue', current: 8950000, previous: 7825000 },
-    { name: 'Service Revenue', current: 2680000, previous: 2345000 },
-    { name: 'Subscription Revenue', current: 1220000, previous: 980000 },
-  ] },
-  { category: 'Cost of Goods Sold', items: [
-    { name: 'Direct Labor', current: -1890000, previous: -1720000 },
-    { name: 'Materials & Hosting', current: -1245000, previous: -1095000 },
-    { name: 'Third-Party Services', current: -925000, previous: -845000 },
-  ] },
-  { category: 'Operating Expenses', items: [
-    { name: 'Sales & Marketing', current: -2180000, previous: -1950000 },
-    { name: 'Research & Development', current: -1850000, previous: -1680000 },
-    { name: 'General & Administrative', current: -1425000, previous: -1320000 },
-    { name: 'Depreciation & Amortization', current: -925000, previous: -870000 },
-  ] },
-  { category: 'Other Income/Expense', items: [
-    { name: 'Interest Income', current: 142000, previous: 98000 },
-    { name: 'Interest Expense', current: -285000, previous: -310000 },
-    { name: 'Other Income', current: 45000, previous: 32000 },
-  ] },
-]
+// ─── Parse helpers ──────────────────────────────────
+function parsePrice(val: any): number {
+  if (!val) return 0
+  const n = Number.parseFloat(String(val).replace(/[^0-9.-]/g, ''))
+  return Number.isNaN(n) ? 0 : n
+}
 
-// ── Revenue Trend ──────────────────────────────────
-const revenueTrend = [
-  { month: 'Jan', revenue: 985000, expenses: 780000, profit: 205000 },
-  { month: 'Feb', revenue: 1020000, expenses: 795000, profit: 225000 },
-  { month: 'Mar', revenue: 1105000, expenses: 810000, profit: 295000 },
-  { month: 'Apr', revenue: 1045000, expenses: 825000, profit: 220000 },
-  { month: 'May', revenue: 1125000, expenses: 840000, profit: 285000 },
-  { month: 'Jun', revenue: 1180000, expenses: 855000, profit: 325000 },
-  { month: 'Jul', revenue: 1095000, expenses: 830000, profit: 265000 },
-  { month: 'Aug', revenue: 1150000, expenses: 845000, profit: 305000 },
-  { month: 'Sep', revenue: 1210000, expenses: 860000, profit: 350000 },
-  { month: 'Oct', revenue: 1165000, expenses: 875000, profit: 290000 },
-  { month: 'Nov', revenue: 1280000, expenses: 890000, profit: 390000 },
-  { month: 'Dec', revenue: 1350000, expenses: 920000, profit: 430000 },
-]
+function parseDate(val: any): Date | null {
+  if (!val) return null
+  try {
+    const d = new Date(val?.value || val)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  catch { return null }
+}
 
-// ── Expense Breakdown ──────────────────────────────
-const expenseBreakdown = [
-  { name: 'Sales & Marketing', value: 2180000 },
-  { name: 'R&D', value: 1850000 },
-  { name: 'G&A', value: 1425000 },
-  { name: 'Depreciation', value: 925000 },
-]
+// ─── Year helpers ───────────────────────────────────
+const currentYear = new Date().getFullYear()
+const lastYear = currentYear - 1
 
-// ── Budget vs Actual ───────────────────────────────
-const budgetData = [
-  { department: 'Sales & Marketing', budget: 2350000, actual: 2180000, variance: 170000 },
-  { department: 'Research & Development', budget: 1800000, actual: 1850000, variance: -50000 },
-  { department: 'General & Admin', budget: 1480000, actual: 1425000, variance: 55000 },
-  { department: 'Customer Success', budget: 680000, actual: 645000, variance: 35000 },
-  { department: 'IT & Infrastructure', budget: 520000, actual: 498000, variance: 22000 },
-  { department: 'Human Resources', budget: 420000, actual: 435000, variance: -15000 },
-]
+function projectsForYear(year: number) {
+  return allProjects.value.filter(p => {
+    const d = parseDate(p.TimeStamp)
+    return d && d.getFullYear() === year
+  })
+}
 
-// ── Cash Flow ──────────────────────────────────────
-const cashFlowData = [
-  { month: 'Jan', operating: 420000, investing: -180000, financing: -95000 },
-  { month: 'Feb', operating: 385000, investing: -125000, financing: -95000 },
-  { month: 'Mar', operating: 510000, investing: -210000, financing: -95000 },
-  { month: 'Apr', operating: 445000, investing: -150000, financing: -95000 },
-  { month: 'May', operating: 495000, investing: -175000, financing: -95000 },
-  { month: 'Jun', operating: 530000, investing: -195000, financing: -95000 },
-  { month: 'Jul', operating: 465000, investing: -160000, financing: -95000 },
-  { month: 'Aug', operating: 480000, investing: -140000, financing: -95000 },
-  { month: 'Sep', operating: 555000, investing: -220000, financing: -95000 },
-  { month: 'Oct', operating: 498000, investing: -185000, financing: -95000 },
-  { month: 'Nov', operating: 580000, investing: -245000, financing: -95000 },
-  { month: 'Dec', operating: 625000, investing: -280000, financing: -95000 },
-]
+// ─── KPI Cards ──────────────────────────────────────
+const kpis = computed(() => {
+  const ps = allProjects.value
+  const thisYearPs = projectsForYear(currentYear)
+  const lastYearPs = projectsForYear(lastYear)
 
-// ── Aged Receivables ───────────────────────────────
-const receivablesData = [
-  { bucket: 'Current', amount: 1850000, pct: 48, count: 45, color: '#10b981' },
-  { bucket: '1–30 Days', amount: 920000, pct: 24, count: 22, color: '#3b82f6' },
-  { bucket: '31–60 Days', amount: 580000, pct: 15, count: 14, color: '#f59e0b' },
-  { bucket: '61–90 Days', amount: 310000, pct: 8, count: 8, color: '#f97316' },
-  { bucket: '90+ Days', amount: 195000, pct: 5, count: 5, color: '#ef4444' },
-]
+  const totalRevenue = thisYearPs.reduce((s, p) => s + parsePrice(p['Project Price']), 0)
+  const lastRevenue = lastYearPs.reduce((s, p) => s + parsePrice(p['Project Price']), 0)
 
-// ── Financial Ratios ───────────────────────────────
-const ratios = [
-  { category: 'Profitability', items: [
-    { name: 'Gross Profit Margin', value: '68.4%', benchmark: '65.0%', status: 'above' },
-    { name: 'Net Profit Margin', value: '17.8%', benchmark: '12.5%', status: 'above' },
-    { name: 'Return on Equity (ROE)', value: '26.8%', benchmark: '20.0%', status: 'above' },
-    { name: 'Return on Assets (ROA)', value: '18.2%', benchmark: '14.0%', status: 'above' },
-  ] },
-  { category: 'Liquidity', items: [
-    { name: 'Current Ratio', value: '2.80x', benchmark: '2.00x', status: 'above' },
-    { name: 'Quick Ratio', value: '2.26x', benchmark: '1.50x', status: 'above' },
-    { name: 'Cash Ratio', value: '1.18x', benchmark: '0.80x', status: 'above' },
-    { name: 'Working Capital', value: '$3.74M', benchmark: '$2.50M', status: 'above' },
-  ] },
-  { category: 'Efficiency', items: [
-    { name: 'Asset Turnover', value: '1.44x', benchmark: '1.20x', status: 'above' },
-    { name: 'Inventory Turnover', value: '6.33x', benchmark: '7.00x', status: 'below' },
-    { name: 'Days Sales Outstanding', value: '26.5 days', benchmark: '30 days', status: 'above' },
-    { name: 'Days Payable Outstanding', value: '44.7 days', benchmark: '45 days', status: 'at' },
-  ] },
-  { category: 'Leverage', items: [
-    { name: 'Debt-to-Equity', value: '0.51x', benchmark: '1.00x', status: 'above' },
-    { name: 'Interest Coverage', value: '13.6x', benchmark: '5.00x', status: 'above' },
-    { name: 'Debt Ratio', value: '0.34', benchmark: '0.50', status: 'above' },
-    { name: 'Equity Multiplier', value: '1.51x', benchmark: '2.00x', status: 'above' },
-  ] },
-]
+  const totalNet = thisYearPs.reduce((s, p) => s + parsePrice(p['Project Net Amount']), 0)
+  const lastNet = lastYearPs.reduce((s, p) => s + parsePrice(p['Project Net Amount']), 0)
+
+  const totalCost = thisYearPs.reduce((s, p) => s + parsePrice(p['Contract Price']), 0)
+  const grossMargin = totalRevenue > 0 ? Math.round(((totalRevenue - totalCost) / totalRevenue) * 1000) / 10 : 0
+  const lastCost = lastYearPs.reduce((s, p) => s + parsePrice(p['Contract Price']), 0)
+  const lastGrossMargin = lastRevenue > 0 ? Math.round(((lastRevenue - lastCost) / lastRevenue) * 1000) / 10 : 0
+
+  const opex = totalRevenue - totalNet
+  const lastOpex = lastRevenue - lastNet
+
+  // Completed projects revenue as "Cash"
+  const completedRevenue = thisYearPs.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed')
+  }).reduce((s, p) => s + parsePrice(p['Project Price']), 0)
+  const lastCompleted = lastYearPs.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed')
+  }).reduce((s, p) => s + parsePrice(p['Project Price']), 0)
+
+  function yoyChange(cur: number, prev: number) {
+    if (prev === 0) return cur > 0 ? 100 : 0
+    return Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10
+  }
+
+  return [
+    { label: 'Total Revenue', value: totalRevenue, prefix: '$', suffix: '', change: yoyChange(totalRevenue, lastRevenue), icon: 'i-lucide-trending-up', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { label: 'Net Income', value: totalNet, prefix: '$', suffix: '', change: yoyChange(totalNet, lastNet), icon: 'i-lucide-circle-dollar-sign', color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { label: 'Gross Margin', value: grossMargin, prefix: '', suffix: '%', change: Math.round((grossMargin - lastGrossMargin) * 10) / 10, icon: 'i-lucide-percent', color: 'text-violet-500', bg: 'bg-violet-500/10' },
+    { label: 'Total Costs', value: opex, prefix: '$', suffix: '', change: yoyChange(opex, lastOpex), icon: 'i-lucide-receipt', color: 'text-amber-500', bg: 'bg-amber-500/10' },
+    { label: 'EBITDA', value: totalNet, prefix: '$', suffix: '', change: yoyChange(totalNet, lastNet), icon: 'i-lucide-landmark', color: 'text-pink-500', bg: 'bg-pink-500/10' },
+    { label: 'Collected Revenue', value: completedRevenue, prefix: '$', suffix: '', change: yoyChange(completedRevenue, lastCompleted), icon: 'i-lucide-wallet', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+  ]
+})
+
+// ─── P&L Statement (this year vs last year) ─────────
+const pnlData = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+  const lastPs = projectsForYear(lastYear)
+
+  // Group revenue by project type
+  function revenueByType(ps: any[]) {
+    const groups: Record<string, number> = {}
+    ps.forEach(p => {
+      const type = p['Project Type'] || 'Other'
+      groups[type] = (groups[type] || 0) + parsePrice(p['Project Price'])
+    })
+    return groups
+  }
+
+  // Group costs by project type
+  function costByType(ps: any[]) {
+    const groups: Record<string, number> = {}
+    ps.forEach(p => {
+      const type = p['Project Type'] || 'Other'
+      groups[type] = (groups[type] || 0) + parsePrice(p['Contract Price'])
+    })
+    return groups
+  }
+
+  const thisRevByType = revenueByType(thisPs)
+  const lastRevByType = revenueByType(lastPs)
+  const thisCostByType = costByType(thisPs)
+  const lastCostByType = costByType(lastPs)
+
+  // All unique types
+  const allTypes = [...new Set([...Object.keys(thisRevByType), ...Object.keys(lastRevByType)])].sort()
+
+  const revenueItems = allTypes.map(type => ({
+    name: `${type} Revenue`,
+    current: Math.round(thisRevByType[type] || 0),
+    previous: Math.round(lastRevByType[type] || 0),
+  }))
+
+  const costItems = allTypes.map(type => ({
+    name: `${type} Costs`,
+    current: -Math.round(thisCostByType[type] || 0),
+    previous: -Math.round(lastCostByType[type] || 0),
+  })).filter(item => item.current !== 0 || item.previous !== 0)
+
+  // Net amounts by branch as "Operating Expenses"
+  function netByBranch(ps: any[]) {
+    const groups: Record<string, number> = {}
+    ps.forEach(p => {
+      const branch = p['Branch Name'] || 'Other'
+      const net = parsePrice(p['Project Net Amount'])
+      const price = parsePrice(p['Project Price'])
+      groups[branch] = (groups[branch] || 0) + (price - net)
+    })
+    return groups
+  }
+  const thisOpByBranch = netByBranch(thisPs)
+  const lastOpByBranch = netByBranch(lastPs)
+  const allBranches = [...new Set([...Object.keys(thisOpByBranch), ...Object.keys(lastOpByBranch)])].sort()
+
+  const opexItems = allBranches.map(branch => ({
+    name: `${branch} Operations`,
+    current: -Math.round(thisOpByBranch[branch] || 0),
+    previous: -Math.round(lastOpByBranch[branch] || 0),
+  })).filter(item => item.current !== 0 || item.previous !== 0)
+
+  return [
+    { category: 'Revenue', items: revenueItems },
+    { category: 'Cost of Goods Sold', items: costItems },
+    { category: 'Operating Overhead', items: opexItems.length > 0 ? opexItems : [{ name: 'General Operations', current: 0, previous: 0 }] },
+  ]
+})
+
+// ─── P&L Net totals ─────────────────────────────────
+const pnlNetIncome = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+  const lastPs = projectsForYear(lastYear)
+  return {
+    current: Math.round(thisPs.reduce((s, p) => s + parsePrice(p['Project Net Amount']), 0)),
+    previous: Math.round(lastPs.reduce((s, p) => s + parsePrice(p['Project Net Amount']), 0)),
+  }
+})
+
+// ─── Revenue Trend (monthly) ────────────────────────
+const revenueTrend = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+  const monthlyRev: Record<number, number> = {}
+  const monthlyCost: Record<number, number> = {}
+
+  thisPs.forEach(p => {
+    const d = parseDate(p.TimeStamp)
+    if (!d) return
+    const m = d.getMonth()
+    monthlyRev[m] = (monthlyRev[m] || 0) + parsePrice(p['Project Price'])
+    monthlyCost[m] = (monthlyCost[m] || 0) + parsePrice(p['Contract Price'])
+  })
+
+  return MONTHS.map((month, i) => ({
+    month,
+    revenue: Math.round(monthlyRev[i] || 0),
+    expenses: Math.round(monthlyCost[i] || 0),
+    profit: Math.round((monthlyRev[i] || 0) - (monthlyCost[i] || 0)),
+  }))
+})
+
+// ─── Expense Breakdown by Project Type ──────────────
+const expenseBreakdown = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+  const groups: Record<string, number> = {}
+  thisPs.forEach(p => {
+    const type = p['Project Type'] || 'Other'
+    groups[type] = (groups[type] || 0) + parsePrice(p['Contract Price'])
+  })
+  return Object.entries(groups)
+    .map(([name, value]) => ({ name, value: Math.round(value) }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6)
+})
+
+// ─── Budget vs Actual by Branch ─────────────────────
+const budgetData = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+  const groups: Record<string, { contract: number, price: number }> = {}
+  thisPs.forEach(p => {
+    const branch = p['Branch Name'] || 'Other'
+    if (!groups[branch]) groups[branch] = { contract: 0, price: 0 }
+    groups[branch].contract += parsePrice(p['Contract Price'])
+    groups[branch].price += parsePrice(p['Project Price'])
+  })
+  return Object.entries(groups)
+    .map(([department, data]) => ({
+      department,
+      budget: Math.round(data.contract),
+      actual: Math.round(data.price),
+      variance: Math.round(data.contract - data.price),
+    }))
+    .sort((a, b) => b.actual - a.actual)
+})
+
+const budgetNetVariance = computed(() => {
+  return budgetData.value.reduce((s, d) => s + d.variance, 0)
+})
+
+// ─── Cash Flow (monthly) ────────────────────────────
+const cashFlowData = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+
+  const monthlyOp: Record<number, number> = {}
+  const monthlyInv: Record<number, number> = {}
+  const monthlyFin: Record<number, number> = {}
+
+  thisPs.forEach(p => {
+    const d = parseDate(p.TimeStamp)
+    if (!d) return
+    const m = d.getMonth()
+    const st = (p['Project Status'] || '').toLowerCase()
+    const net = parsePrice(p['Project Net Amount'])
+    const price = parsePrice(p['Project Price'])
+    const cost = parsePrice(p['Contract Price'])
+
+    if (st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed')) {
+      monthlyOp[m] = (monthlyOp[m] || 0) + net
+    }
+    else if (st.includes('cancelled') || st.includes('canceled')) {
+      monthlyFin[m] = (monthlyFin[m] || 0) - cost
+    }
+    else {
+      monthlyInv[m] = (monthlyInv[m] || 0) - (price - net)
+    }
+  })
+
+  return MONTHS.map((month, i) => ({
+    month,
+    operating: Math.round(monthlyOp[i] || 0),
+    investing: Math.round(monthlyInv[i] || 0),
+    financing: Math.round(monthlyFin[i] || 0),
+  }))
+})
+
+// ─── Cash Flow Summary ──────────────────────────────
+const cashFlowSummary = computed(() => {
+  const op = cashFlowData.value.reduce((s, d) => s + d.operating, 0)
+  const inv = cashFlowData.value.reduce((s, d) => s + d.investing, 0)
+  const fin = cashFlowData.value.reduce((s, d) => s + d.financing, 0)
+  return { operating: op, investing: inv, financing: fin, net: op + inv + fin }
+})
+
+// ─── Aged Receivables ───────────────────────────────
+const receivablesData = computed(() => {
+  const now = new Date()
+  const activePs = allProjects.value.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return !(st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed') || st.includes('cancelled') || st.includes('canceled'))
+  })
+
+  const buckets = [
+    { bucket: 'Current', min: 0, max: 0, color: '#10b981' },
+    { bucket: '1–30 Days', min: 1, max: 30, color: '#3b82f6' },
+    { bucket: '31–60 Days', min: 31, max: 60, color: '#f59e0b' },
+    { bucket: '61–90 Days', min: 61, max: 90, color: '#f97316' },
+    { bucket: '90+ Days', min: 91, max: 99999, color: '#ef4444' },
+  ]
+
+  const result = buckets.map(b => ({ ...b, amount: 0, count: 0 }))
+
+  activePs.forEach(p => {
+    const start = parseDate(p['Project Start'] || p.TimeStamp)
+    if (!start) return
+    const daysOld = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+    const price = parsePrice(p['Project Price'])
+    for (const r of result) {
+      if (daysOld >= r.min && daysOld <= r.max) {
+        r.amount += price
+        r.count++
+        break
+      }
+    }
+  })
+
+  const total = result.reduce((s, r) => s + r.amount, 0)
+  return result.map(r => ({
+    bucket: r.bucket,
+    amount: Math.round(r.amount),
+    pct: total > 0 ? Math.round((r.amount / total) * 100) : 0,
+    count: r.count,
+    color: r.color,
+  }))
+})
+
+// ─── AR Metrics ─────────────────────────────────────
+const arMetrics = computed(() => {
+  const totalOutstanding = receivablesData.value.reduce((s, r) => s + r.amount, 0)
+  const totalCount = receivablesData.value.reduce((s, r) => s + r.count, 0)
+  const ps = allProjects.value
+  const totalProjects = ps.length
+  const completed = ps.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed')
+  }).length
+  const collectionRate = totalProjects > 0 ? Math.round((completed / totalProjects) * 1000) / 10 : 0
+  const cancelled = ps.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return st.includes('cancelled') || st.includes('canceled')
+  }).length
+  const badDebtRate = totalProjects > 0 ? Math.round((cancelled / totalProjects) * 1000) / 10 : 0
+
+  // Average project duration for completed ones
+  const durations: number[] = []
+  ps.forEach(p => {
+    const start = parseDate(p['Project Start'])
+    const end = parseDate(p['Project End'] || p['Completion Date'])
+    if (start && end && end > start) {
+      durations.push(Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
+    }
+  })
+  const avgDays = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0
+
+  return [
+    { label: 'Total Outstanding', value: fmt(totalOutstanding), icon: 'i-lucide-banknote', change: `${totalCount} projects` },
+    { label: 'Avg. Project Duration', value: `${avgDays} days`, icon: 'i-lucide-clock', change: '' },
+    { label: 'Collection Rate', value: `${collectionRate}%`, icon: 'i-lucide-check-circle', change: `${completed} of ${totalProjects}` },
+    { label: 'Cancellation Rate', value: `${badDebtRate}%`, icon: 'i-lucide-alert-triangle', change: `${cancelled} cancelled` },
+    { label: 'Active Projects', value: String(totalCount), icon: 'i-lucide-calendar', change: 'In pipeline' },
+  ]
+})
+
+// ─── Financial Ratios ───────────────────────────────
+const ratios = computed(() => {
+  const thisPs = projectsForYear(currentYear)
+  const totalRevenue = thisPs.reduce((s, p) => s + parsePrice(p['Project Price']), 0)
+  const totalCost = thisPs.reduce((s, p) => s + parsePrice(p['Contract Price']), 0)
+  const totalNet = thisPs.reduce((s, p) => s + parsePrice(p['Project Net Amount']), 0)
+
+  const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue * 100).toFixed(1) : '0.0'
+  const netMargin = totalRevenue > 0 ? (totalNet / totalRevenue * 100).toFixed(1) : '0.0'
+  const costRatio = totalRevenue > 0 ? (totalCost / totalRevenue).toFixed(2) : '0.00'
+  const revenuePerProject = thisPs.length > 0 ? fmt(Math.round(totalRevenue / thisPs.length)) : '$0'
+  const netPerProject = thisPs.length > 0 ? fmt(Math.round(totalNet / thisPs.length)) : '$0'
+
+  // Pipeline coverage
+  const pipeline = allProjects.value.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return !(st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed') || st.includes('cancelled') || st.includes('canceled'))
+  }).reduce((s, p) => s + parsePrice(p['Project Price']), 0)
+  const coverage = totalRevenue > 0 ? (pipeline / totalRevenue).toFixed(2) : '0.00'
+
+  const completed = thisPs.filter(p => {
+    const st = (p['Project Status'] || '').toLowerCase()
+    return st.includes('completed') || st.includes('complete') || st.includes('done') || st.includes('closed')
+  }).length
+  const completionRate = thisPs.length > 0 ? ((completed / thisPs.length) * 100).toFixed(1) : '0.0'
+
+  return [
+    { category: 'Profitability', items: [
+      { name: 'Gross Profit Margin', value: `${grossMargin}%`, benchmark: '65.0%', status: Number(grossMargin) >= 65 ? 'above' : 'below' },
+      { name: 'Net Profit Margin', value: `${netMargin}%`, benchmark: '12.5%', status: Number(netMargin) >= 12.5 ? 'above' : 'below' },
+      { name: 'Revenue per Project', value: revenuePerProject, benchmark: '$50K', status: 'above' },
+      { name: 'Net per Project', value: netPerProject, benchmark: '$10K', status: 'above' },
+    ] },
+    { category: 'Efficiency', items: [
+      { name: 'Cost-to-Revenue Ratio', value: `${costRatio}x`, benchmark: '0.65x', status: Number(costRatio) <= 0.65 ? 'above' : 'below' },
+      { name: 'Completion Rate', value: `${completionRate}%`, benchmark: '80.0%', status: Number(completionRate) >= 80 ? 'above' : 'below' },
+      { name: 'Pipeline Coverage', value: `${coverage}x`, benchmark: '1.00x', status: Number(coverage) >= 1.0 ? 'above' : 'below' },
+      { name: 'Total Projects (YTD)', value: String(thisPs.length), benchmark: '—', status: 'at' },
+    ] },
+    { category: 'Revenue Metrics', items: [
+      { name: 'Total Revenue (YTD)', value: fmt(totalRevenue), benchmark: '—', status: 'above' },
+      { name: 'Total Costs (YTD)', value: fmt(totalCost), benchmark: '—', status: 'at' },
+      { name: 'Net Income (YTD)', value: fmt(totalNet), benchmark: '—', status: totalNet > 0 ? 'above' : 'below' },
+      { name: 'Pipeline Value', value: fmt(pipeline), benchmark: '—', status: 'above' },
+    ] },
+  ]
+})
 
 // ── Helpers ────────────────────────────────────────
 function fmt(n: number) {
@@ -147,11 +427,19 @@ function fmtExact(n: number) {
 </script>
 
 <template>
-  <div class="w-full flex flex-col gap-5">
+  <div class="w-full flex-1 min-h-0 overflow-auto">
+  <div class="flex flex-col gap-5 p-1">
+    <!-- Loading -->
+    <div v-if="loading" class="flex flex-col items-center justify-center py-20 gap-3">
+      <Icon name="i-lucide-loader-2" class="size-8 animate-spin text-muted-foreground" />
+      <p class="text-sm text-muted-foreground">Loading financial data…</p>
+    </div>
+
+    <template v-else>
     <!-- Tab Navigation -->
     <div class="flex items-center gap-1 border rounded-lg p-1 bg-muted/30 w-fit">
       <button
-        v-for="tab in [{ id: 'pnl', label: 'P&L Statement', icon: 'i-lucide-file-text' }, { id: 'cashflow', label: 'Cash Flow', icon: 'i-lucide-arrow-right-left' }, { id: 'budget', label: 'Budget vs Actual', icon: 'i-lucide-target' }, { id: 'receivables', label: 'Receivables', icon: 'i-lucide-clock' }, { id: 'ratios', label: 'Ratios', icon: 'i-lucide-gauge' }]"
+        v-for="tab in [{ id: 'pnl', label: 'P&L Statement', icon: 'i-lucide-file-text' }, { id: 'cashflow', label: 'Cash Flow', icon: 'i-lucide-arrow-right-left' }, { id: 'budget', label: 'Contract vs Revenue', icon: 'i-lucide-target' }, { id: 'receivables', label: 'Receivables', icon: 'i-lucide-clock' }, { id: 'ratios', label: 'Ratios', icon: 'i-lucide-gauge' }]"
         :key="tab.id"
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all" :class="[
           activeTab === tab.id ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground',
@@ -202,10 +490,10 @@ function fmtExact(n: number) {
                 <CardTitle class="text-sm font-semibold">
                   Revenue, Expenses & Profit
                 </CardTitle>
-                <CardDescription>Monthly breakdown for FY 2026</CardDescription>
+                <CardDescription>Monthly breakdown for FY {{ currentYear }}</CardDescription>
               </div>
-              <Badge variant="outline" class="text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10">
-                <TrendingUp class="size-3 mr-1" /> +14.2% YoY
+              <Badge v-if="kpis[0]" variant="outline" :class="kpis[0].change >= 0 ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10' : 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/10'">
+                <component :is="kpis[0].change >= 0 ? TrendingUp : TrendingDown" class="size-3 mr-1" /> {{ kpis[0].change >= 0 ? '+' : '' }}{{ kpis[0].change }}% YoY
               </Badge>
             </div>
           </CardHeader>
@@ -227,21 +515,21 @@ function fmtExact(n: number) {
             <CardTitle class="text-sm font-semibold">
               Operating Expense Mix
             </CardTitle>
-            <CardDescription>Expense distribution by category</CardDescription>
+            <CardDescription>Cost distribution by project type</CardDescription>
           </CardHeader>
           <CardContent class="flex flex-col items-center">
             <DonutChart
               :data="expenseBreakdown"
               index="name"
               category="value"
-              :colors="['#ec4899', '#8b5cf6', '#f59e0b', '#64748b']"
+              :colors="['#ec4899', '#8b5cf6', '#f59e0b', '#64748b', '#06b6d4', '#10b981']"
               :value-formatter="(v: number) => fmt(v)"
               class="h-[180px]"
             />
             <div class="w-full mt-4 space-y-2">
               <div v-for="(e, i) in expenseBreakdown" :key="e.name" class="flex items-center justify-between text-xs">
                 <div class="flex items-center gap-2">
-                  <div class="size-2.5 rounded-full" :style="{ background: ['#ec4899', '#8b5cf6', '#f59e0b', '#64748b'][i] }" />
+                  <div class="size-2.5 rounded-full" :style="{ background: ['#ec4899', '#8b5cf6', '#f59e0b', '#64748b', '#06b6d4', '#10b981'][i] }" />
                   <span class="text-muted-foreground">{{ e.name }}</span>
                 </div>
                 <span class="font-semibold tabular-nums">{{ fmt(e.value) }}</span>
@@ -259,7 +547,7 @@ function fmtExact(n: number) {
               <CardTitle class="text-sm font-semibold">
                 Income Statement
               </CardTitle>
-              <CardDescription>Detailed P&L for FY 2026 vs FY 2025</CardDescription>
+              <CardDescription>Detailed P&L for FY {{ currentYear }} vs FY {{ lastYear }}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -269,10 +557,10 @@ function fmtExact(n: number) {
               <TableRow>
                 <TableHead>Line Item</TableHead>
                 <TableHead class="text-right">
-                  FY 2026
+                  FY {{ currentYear }}
                 </TableHead>
                 <TableHead class="text-right">
-                  FY 2025
+                  FY {{ lastYear }}
                 </TableHead>
                 <TableHead class="text-right">
                   Variance
@@ -304,6 +592,7 @@ function fmtExact(n: number) {
                   </TableCell>
                   <TableCell class="text-right tabular-nums text-sm">
                     <Badge
+                      v-if="item.previous !== 0"
                       variant="outline"
                       :class="
                         (() => {
@@ -316,6 +605,7 @@ function fmtExact(n: number) {
                     >
                       {{ ((item.current - item.previous) / Math.abs(item.previous) * 100).toFixed(1) }}%
                     </Badge>
+                    <span v-else class="text-muted-foreground text-[10px]">—</span>
                   </TableCell>
                 </TableRow>
               </template>
@@ -324,19 +614,20 @@ function fmtExact(n: number) {
                 <TableCell class="text-sm font-bold">
                   Net Income
                 </TableCell>
-                <TableCell class="text-right tabular-nums text-emerald-600 dark:text-emerald-400 text-sm font-bold">
-                  $2,288,000
+                <TableCell class="text-right tabular-nums text-sm font-bold" :class="pnlNetIncome.current >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                  {{ fmtExact(pnlNetIncome.current) }}
                 </TableCell>
                 <TableCell class="text-right tabular-nums text-muted-foreground text-sm font-bold">
-                  $1,883,000
+                  {{ fmtExact(pnlNetIncome.previous) }}
                 </TableCell>
-                <TableCell class="text-right tabular-nums text-emerald-600 dark:text-emerald-400 text-sm font-bold">
-                  $405,000
+                <TableCell class="text-right tabular-nums text-sm font-bold" :class="(pnlNetIncome.current - pnlNetIncome.previous) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                  {{ fmtExact(pnlNetIncome.current - pnlNetIncome.previous) }}
                 </TableCell>
                 <TableCell class="text-right">
-                  <Badge variant="outline" class="text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10 text-[10px]">
-                    +21.5%
+                  <Badge v-if="pnlNetIncome.previous !== 0" variant="outline" :class="((pnlNetIncome.current - pnlNetIncome.previous) / Math.abs(pnlNetIncome.previous)) >= 0 ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10' : 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/10'" class="text-[10px]">
+                    {{ (((pnlNetIncome.current - pnlNetIncome.previous) / Math.abs(pnlNetIncome.previous)) * 100).toFixed(1) }}%
                   </Badge>
+                  <span v-else class="text-muted-foreground text-[10px]">—</span>
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -379,9 +670,9 @@ function fmtExact(n: number) {
           <CardContent class="space-y-4">
             <div
               v-for="item in [
-                { label: 'Operating Activities', value: 5988000, icon: 'i-lucide-building-2', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-                { label: 'Investing Activities', value: -2265000, icon: 'i-lucide-trending-up', color: 'text-violet-500', bg: 'bg-violet-500/10' },
-                { label: 'Financing Activities', value: -1140000, icon: 'i-lucide-banknote', color: 'text-amber-500', bg: 'bg-amber-500/10' },
+                { label: 'Operating Activities', value: cashFlowSummary.operating, icon: 'i-lucide-building-2', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { label: 'Investing Activities', value: cashFlowSummary.investing, icon: 'i-lucide-trending-up', color: 'text-violet-500', bg: 'bg-violet-500/10' },
+                { label: 'Financing Activities', value: cashFlowSummary.financing, icon: 'i-lucide-banknote', color: 'text-amber-500', bg: 'bg-amber-500/10' },
               ]" :key="item.label" class="flex items-center gap-3 p-3 rounded-lg border"
             >
               <div class="flex items-center justify-center rounded-lg p-2" :class="item.bg">
@@ -399,7 +690,7 @@ function fmtExact(n: number) {
             <Separator />
             <div class="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
               <span class="text-sm font-semibold">Net Cash Flow</span>
-              <span class="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">$2,583,000</span>
+              <span class="text-sm font-bold tabular-nums" :class="cashFlowSummary.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">{{ fmt(cashFlowSummary.net) }}</span>
             </div>
           </CardContent>
         </Card>
@@ -413,12 +704,12 @@ function fmtExact(n: number) {
           <div class="flex items-center justify-between">
             <div>
               <CardTitle class="text-sm font-semibold">
-                Budget vs Actual by Department
+                Contract vs Revenue by Branch
               </CardTitle>
-              <CardDescription>FY 2026 variance analysis</CardDescription>
+              <CardDescription>FY {{ currentYear }} variance analysis</CardDescription>
             </div>
-            <Badge variant="outline" class="text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10">
-              Net $217K Under Budget
+            <Badge variant="outline" :class="budgetNetVariance >= 0 ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10' : 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/10'">
+              Net {{ fmt(Math.abs(budgetNetVariance)) }} {{ budgetNetVariance >= 0 ? 'Under' : 'Over' }} Contract
             </Badge>
           </div>
         </CardHeader>
@@ -426,12 +717,12 @@ function fmtExact(n: number) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Department</TableHead>
+                <TableHead>Branch</TableHead>
                 <TableHead class="text-right">
-                  Budget
+                  Contract Price
                 </TableHead>
                 <TableHead class="text-right">
-                  Actual
+                  Project Price
                 </TableHead>
                 <TableHead class="text-right">
                   Variance
@@ -499,7 +790,7 @@ function fmtExact(n: number) {
                     <div class="size-3 rounded" :style="{ background: bucket.color }" />
                     <span class="font-medium">{{ bucket.bucket }}</span>
                     <Badge variant="secondary" class="text-[10px]">
-                      {{ bucket.count }} invoices
+                      {{ bucket.count }} projects
                     </Badge>
                   </div>
                   <span class="font-semibold tabular-nums">{{ fmtExact(bucket.amount) }}</span>
@@ -526,13 +817,7 @@ function fmtExact(n: number) {
           </CardHeader>
           <CardContent class="space-y-4">
             <div
-              v-for="metric in [
-                { label: 'Total Outstanding', value: '$3.86M', icon: 'i-lucide-banknote', change: '' },
-                { label: 'Days Sales Outstanding', value: '26.5 days', icon: 'i-lucide-clock', change: '↓ 3.2 days' },
-                { label: 'Collection Rate', value: '94.2%', icon: 'i-lucide-check-circle', change: '↑ 1.8%' },
-                { label: 'Bad Debt Rate', value: '0.8%', icon: 'i-lucide-alert-triangle', change: '↓ 0.3%' },
-                { label: 'Avg. Payment Days', value: '22 days', icon: 'i-lucide-calendar', change: '↓ 4 days' },
-              ]" :key="metric.label" class="flex items-center gap-3"
+              v-for="metric in arMetrics" :key="metric.label" class="flex items-center gap-3"
             >
               <div class="flex items-center justify-center rounded-lg p-2 bg-muted/50">
                 <Icon :name="metric.icon" class="size-4 text-muted-foreground" />
@@ -598,5 +883,7 @@ function fmtExact(n: number) {
         </Card>
       </div>
     </template>
+    </template>
+  </div>
   </div>
 </template>

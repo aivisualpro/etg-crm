@@ -11,7 +11,7 @@ const error = ref('')
 const search = ref('')
 const CHUNK_SIZE = 30
 const visibleCount = ref(CHUNK_SIZE)
-const activeFilter = ref('')
+const activeFilter = ref('this-week')
 
 // CRUD state
 const showDialog = ref(false)
@@ -451,7 +451,8 @@ function getFullName(c: any): string {
             <TableRow
               v-for="(customer, idx) in visibleCustomers"
               :key="customer['Customer ID'] || idx"
-              class="group"
+              class="group cursor-pointer hover:bg-muted/50 transition-colors"
+              @click="navigateTo(`/customers/${customer['Customer ID']}`)"
             >
               <!-- Customer ID -->
               <TableCell>

@@ -333,7 +333,8 @@ const currencyColumns = ['Project Price', 'Contract Price', 'Project Net Amount'
             <TableRow
               v-for="(project, idx) in visibleProjects"
               :key="project['Project ID'] || idx"
-              class="group"
+              class="group cursor-pointer hover:bg-muted/50 transition-colors"
+              @click="navigateTo(`/projects/${project['Project ID']}`)"
             >
               <TableCell v-for="col in columns" :key="col.key">
                 <!-- Project Folder -->
