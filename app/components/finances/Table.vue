@@ -141,14 +141,33 @@ const sorted = computed(() => {
   })
 })
 
-const page = ref(1)
-const totalPages = computed(() => Math.ceil(sorted.value.length / props.perPage))
-const paginated = computed(() => {
-  const start = (page.value - 1) * props.perPage
-  return sorted.value.slice(start, start + props.perPage)
+// ─── Infinite scroll ────────────────────────────────────────
+const visibleCount = ref(props.perPage)
+const visible = computed(() => sorted.value.slice(0, visibleCount.value))
+const hasMore = computed(() => visibleCount.value < sorted.value.length)
+
+function loadMore() {
+  if (hasMore.value) visibleCount.value += props.perPage
+}
+
+watch(() => search.value, () => { visibleCount.value = props.perPage })
+watch(() => props.records, () => { visibleCount.value = props.perPage })
+
+const sentinelRef = ref<HTMLElement | null>(null)
+let _observer: IntersectionObserver | null = null
+
+onMounted(() => {
+  _observer = new IntersectionObserver((entries) => {
+    if (entries[0]?.isIntersecting && hasMore.value) loadMore()
+  }, { rootMargin: '200px' })
 })
-watch(() => search.value, () => { page.value = 1 })
-watch(() => props.records, () => { page.value = 1 })
+
+onUnmounted(() => { _observer?.disconnect() })
+
+watch(sentinelRef, (el) => {
+  _observer?.disconnect()
+  if (el) _observer?.observe(el)
+})
 
 // ─── Cell value getter ──────────────────────────────────────
 function cellValue(rec: any, col: { key: string }): string {
@@ -219,7 +238,7 @@ function cellValue(rec: any, col: { key: string }): string {
           </thead>
           <tbody>
             <tr
-              v-for="(rec, idx) in paginated"
+              v-for="(rec, idx) in visible"
               :key="rec['Record ID'] || idx"
               class="border-b border-border/20 hover:bg-muted/15 transition-colors"
             >
@@ -270,7 +289,7 @@ function cellValue(rec: any, col: { key: string }): string {
             </tr>
 
             <!-- No results -->
-            <tr v-if="paginated.length === 0">
+            <tr v-if="visible.length === 0">
               <td :colspan="columns.length" class="text-center py-8 text-muted-foreground">
                 <Icon name="i-lucide-search-x" class="size-6 mx-auto mb-1.5 text-muted-foreground/15" />
                 <p class="text-xs">No matching records</p>
@@ -278,30 +297,14 @@ function cellValue(rec: any, col: { key: string }): string {
             </tr>
           </tbody>
         </table>
-      </div>
 
-      <!-- Pagination -->
-      <div v-if="totalPages > 1" class="flex items-center justify-between border-t bg-card/30 shrink-0" :class="compact ? 'px-2 py-1.5' : 'px-4 py-2.5'">
-        <span class="text-muted-foreground" :class="compact ? 'text-[9px]' : 'text-[11px]'">
-          {{ page }}/{{ totalPages }} · {{ filtered.length.toLocaleString() }}
-        </span>
-        <div class="flex items-center gap-1">
-          <button
-            :disabled="page <= 1"
-            class="size-6 rounded flex items-center justify-center border text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            @click="page--"
-          >
-            <Icon name="i-lucide-chevron-left" class="size-3" />
-          </button>
-          <button
-            :disabled="page >= totalPages"
-            class="size-6 rounded flex items-center justify-center border text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            @click="page++"
-          >
-            <Icon name="i-lucide-chevron-right" class="size-3" />
-          </button>
+        <!-- Infinite scroll sentinel -->
+        <div v-if="hasMore" ref="sentinelRef" class="flex items-center justify-center py-3 shrink-0">
+          <Icon name="i-lucide-loader-2" class="size-4 animate-spin text-muted-foreground/40" />
+          <span class="text-[10px] text-muted-foreground/40 ml-2">Loading more…</span>
         </div>
       </div>
+
     </div>
   </div>
 </template>

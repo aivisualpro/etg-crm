@@ -103,7 +103,7 @@ const columns = computed(() => {
     { key: 'Note Type', label: 'Type', sortable: true },
     { key: 'Priority', label: 'Priority', sortable: true },
     ...(props.showProject
-      ? [{ key: 'Project ID', label: 'Project', sortable: true }]
+      ? [{ key: 'ProjectId', label: 'Project', sortable: true }]
       : []),
     { key: 'Ticket ID', label: 'Ticket ID', sortable: true },
     { key: 'Customer', label: 'Customer', sortable: true },
@@ -132,8 +132,8 @@ const filtered = computed(() => {
   if (effectiveSearch.value.trim()) {
     const q = effectiveSearch.value.toLowerCase()
     rows = rows.filter(r =>
-      (r['Project ID'] || '').toLowerCase().includes(q)
-      || (resolveProjectAddress(r['Project ID']) || '').toLowerCase().includes(q)
+      (r['ProjectId'] || '').toLowerCase().includes(q)
+      || (resolveProjectAddress(r['ProjectId']) || '').toLowerCase().includes(q)
       || (r.Note || '').toLowerCase().includes(q)
       || (r['Note Type'] || '').toLowerCase().includes(q)
       || (r['Note Category'] || '').toLowerCase().includes(q)
@@ -330,16 +330,16 @@ watch(sentinelRef, (el) => {
                   <span v-else class="text-muted-foreground/40">—</span>
                 </template>
 
-                <!-- Project ID → show address with link -->
-                <template v-else-if="col.key === 'Project ID'">
+                <!-- ProjectId → show address with link -->
+                <template v-else-if="col.key === 'ProjectId'">
                   <NuxtLink
-                    v-if="rec['Project ID']"
-                    :to="`/projects/${rec['Project ID']}`"
+                    v-if="rec['ProjectId']"
+                    :to="`/projects/${rec['ProjectId']}`"
                     class="text-primary hover:underline block truncate max-w-[180px]"
                     :class="compact ? 'text-[10px]' : 'text-[11px]'"
-                    :title="resolveProjectAddress(rec['Project ID']) + ' (' + rec['Project ID'] + ')'"
+                    :title="resolveProjectAddress(rec['ProjectId']) + ' (' + rec['ProjectId'] + ')'"
                   >
-                    {{ resolveProjectAddress(rec['Project ID']) }}
+                    {{ resolveProjectAddress(rec['ProjectId']) }}
                   </NuxtLink>
                   <span v-else class="text-muted-foreground/40">—</span>
                 </template>
@@ -416,20 +416,14 @@ watch(sentinelRef, (el) => {
             </tr>
           </tbody>
         </table>
+
+        <!-- Infinite scroll sentinel -->
+        <div v-if="hasMore" ref="sentinelRef" class="flex items-center justify-center py-3 shrink-0">
+          <Icon name="i-lucide-loader-2" class="size-4 animate-spin text-muted-foreground/40" />
+          <span class="text-[10px] text-muted-foreground/40 ml-2">Loading more…</span>
+        </div>
       </div>
 
-      <!-- Infinite scroll sentinel -->
-      <div v-if="hasMore" ref="sentinelRef" class="flex items-center justify-center py-3 shrink-0">
-        <Icon name="i-lucide-loader-2" class="size-4 animate-spin text-muted-foreground/40" />
-        <span class="text-[10px] text-muted-foreground/40 ml-2">Loading more…</span>
-      </div>
-
-      <!-- Count indicator -->
-      <div v-if="sorted.length > 0" class="flex items-center justify-center border-t bg-card/30 shrink-0" :class="compact ? 'px-2 py-1' : 'px-4 py-2'">
-        <span class="text-muted-foreground" :class="compact ? 'text-[9px]' : 'text-[11px]'">
-          Showing {{ Math.min(visibleCount, sorted.length).toLocaleString() }} of {{ sorted.length.toLocaleString() }}
-        </span>
-      </div>
     </div>
   </div>
 </template>

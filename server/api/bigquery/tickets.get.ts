@@ -1,6 +1,6 @@
 /**
- * GET /api/bigquery/tasks
- * Fetches tasks from the `Tasks` BigQuery table.
+ * GET /api/bigquery/tickets
+ * Fetches tickets from `Tickets` BigQuery table.
  * Caches results for 5 minutes.
  */
 
@@ -12,21 +12,18 @@ export default defineEventHandler(async (event) => {
         const query = getQuery(event)
         const projectId = (query.projectId as string || '').trim()
 
-        // Return cached data if fresh and no filter
         if (!projectId && _cache && Date.now() - _cache.timestamp < CACHE_TTL) {
-            return { success: true, count: _cache.data.length, tasks: _cache.data, cached: true }
+            return { success: true, count: _cache.data.length, tickets: _cache.data, cached: true }
         }
 
-        const baseFilter = '`Task` IS NOT NULL AND TRIM(`Task`) != \'\''
         const whereClause = projectId
-            ? ` WHERE ${baseFilter} AND \`Project\` = '${projectId.replace(/'/g, "\\'")}'`
-            : ` WHERE ${baseFilter}`
+            ? ` WHERE \`Project ID\` = '${projectId.replace(/'/g, "\\'")}'`
+            : ''
 
         const rows = await queryBigQuery(
-            `SELECT * FROM \`appsheet-417200.SWSCRMV4.Tasks\`${whereClause}`,
+            `SELECT * FROM \`appsheet-417200.SWSCRMV4.Tickets\`${whereClause}`,
         )
 
-        // Cache unfiltered results
         if (!projectId) {
             _cache = { data: rows, timestamp: Date.now() }
         }
@@ -34,11 +31,11 @@ export default defineEventHandler(async (event) => {
         return {
             success: true,
             count: rows.length,
-            tasks: rows,
+            tickets: rows,
         }
     }
     catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
-        throw createError({ statusCode: 500, statusMessage: `Failed to fetch tasks: ${message}` })
+        throw createError({ statusCode: 500, statusMessage: `Failed to fetch tickets: ${message}` })
     }
 })

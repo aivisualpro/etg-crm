@@ -41,6 +41,11 @@ const projectPermits = ref<any[]>([])
 const permitsLoading = ref(false)
 const permitsLoaded = ref(false)
 
+// Payments
+const projectPayments = ref<any[]>([])
+const paymentsLoading = ref(false)
+const paymentsLoaded = ref(false)
+
 // Lookups
 const userNameMap = ref<Record<string, string>>({})
 const customerNameMap = ref<Record<string, string>>({})
@@ -142,7 +147,18 @@ async function fetchPermits() {
   finally { permitsLoading.value = false; permitsLoaded.value = true }
 }
 
-onMounted(() => { fetchProject(); fetchChats(); fetchEvents(); fetchFinance(); fetchNotes(); fetchPermits() })
+async function fetchPayments() {
+  if (paymentsLoaded.value || paymentsLoading.value) return
+  paymentsLoading.value = true
+  try {
+    const data = await $fetch<{ success: boolean, payments: any[] }>('/api/bigquery/payments', { params: { projectId: projectId.value } })
+    if (data.success) projectPayments.value = data.payments
+  }
+  catch { toast.error('Failed to load payments') }
+  finally { paymentsLoading.value = false; paymentsLoaded.value = true }
+}
+
+onMounted(() => { fetchProject(); fetchChats(); fetchEvents(); fetchFinance(); fetchNotes(); fetchPermits(); fetchPayments() })
 
 // ─── Header computed ────────────────────────────────────────
 const customerName = computed(() => {
@@ -625,12 +641,26 @@ function cardHasMatch(cardId: string): boolean {
                     />
                   </template>
 
-                  <!-- PLACEHOLDERS: Documents / Payments -->
-                  <template v-else-if="['documents', 'payments'].includes(card.id)">
+                  <!-- DOCUMENTS (placeholder) -->
+                  <template v-else-if="card.id === 'documents'">
                     <div class="flex flex-col items-center justify-center py-10 text-center">
                       <Icon :name="card.icon" class="size-9 text-muted-foreground/15 mb-2" />
                       <p class="text-xs text-muted-foreground/60">Coming soon</p>
                     </div>
+                  </template>
+
+                  <!-- PAYMENTS -->
+                  <template v-else-if="card.id === 'payments'">
+                    <PaymentsTable
+                      :records="projectPayments"
+                      :loading="paymentsLoading"
+                      :user-name-map="userNameMap"
+                      :show-project="false"
+                      :compact="true"
+                      :per-page="10"
+                      :hide-search="true"
+                      :search-query="globalSearch"
+                    />
                   </template>
 
                   <!-- PROJECT FINANCE -->

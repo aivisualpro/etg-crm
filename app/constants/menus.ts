@@ -58,6 +58,11 @@ export const navMenu: NavMenu[] = [
         link: '/finances',
       },
       {
+        title: 'Payments',
+        icon: 'i-lucide-credit-card',
+        link: '/payments',
+      },
+      {
         title: 'Events',
         icon: 'i-lucide-calendar-days',
         link: '/events/calendar',
@@ -79,6 +84,11 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-sticky-note',
         link: '/notes',
       },
+      {
+        title: 'Tickets',
+        icon: 'i-lucide-ticket',
+        link: '/project-tickets',
+      },
     ],
   },
   {
@@ -90,19 +100,6 @@ export const navMenu: NavMenu[] = [
         titleKey: 'nav.kanbanBoard',
         icon: 'i-lucide-kanban',
         link: '/kanban',
-      },
-    ],
-  },
-
-  {
-    heading: 'Support',
-    headingKey: 'nav.support',
-    items: [
-      {
-        title: 'Tickets',
-        titleKey: 'nav.tickets',
-        icon: 'i-lucide-ticket',
-        link: '/support/tickets',
       },
     ],
   },
@@ -177,4 +174,15 @@ export const navMenu: NavMenu[] = [
   },
 ]
 
-export const navMenuBottom: NavMenuItems = []
+export const navMenuBottom: NavMenuItems = [
+  {
+    title: 'Support',
+    icon: 'i-lucide-life-buoy',
+    link: '/support/tickets',
+  },
+  {
+    title: 'Remote Assistance',
+    icon: 'i-lucide-circle-help',
+    link: '/remote-assistance',
+  },
+]
