@@ -4,10 +4,13 @@ import { toast } from 'vue-sonner'
 const { setHeader } = usePageHeader()
 setHeader({ title: 'Customers', icon: 'i-lucide-users' })
 
+// ─── Use global prefetched store ────────────────────────────
+const store = useDashboardStore()
+store.init()
+
 // ─── State ──────────────────────────────────────────────────
-const customers = ref<any[]>([])
-const loading = ref(true)
-const error = ref('')
+const customers = computed(() => [...store.customers.value])
+const userNameMap = computed(() => ({ ...store.userNameMap.value }))
 const search = ref('')
 const CHUNK_SIZE = 30
 const visibleCount = ref(CHUNK_SIZE)
@@ -52,48 +55,6 @@ const formFields = [
   ] },
   { key: 'createBy', label: 'Created By', placeholder: 'Admin' },
 ]
-
-// User lookup: email → full name
-const userNameMap = ref<Record<string, string>>({})
-
-// ─── Fetch ──────────────────────────────────────────────────
-async function fetchCustomers() {
-  loading.value = true
-  error.value = ''
-  try {
-    const customerData = await $fetch<{ success: boolean, customers: any[], count: number }>('/api/bigquery/customers')
-    if (customerData.success) customers.value = customerData.customers
-  }
-  catch (e: any) {
-    error.value = e.data?.statusMessage || e.message || 'Failed to load customers'
-    toast.error('Failed to load customers from BigQuery')
-  }
-  finally {
-    loading.value = false
-  }
-
-  // Load user names in background
-  loadUserNames()
-}
-
-async function loadUserNames() {
-  try {
-    const userData = await $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users')
-    if (userData.success) {
-      userNameMap.value = Object.fromEntries(
-        userData.users
-          .filter((u: any) => u.Email)
-          .map((u: any) => [
-            u.Email.toLowerCase(),
-            [u['First Name'], u['Last Name']].filter(Boolean).join(' ') || u.Email,
-          ]),
-      )
-    }
-  }
-  catch {}
-}
-
-onMounted(fetchCustomers)
 
 // Resolve a "Create By" email to a display name
 function resolveCreatedBy(raw: string): { name: string, email: string } {
@@ -148,7 +109,7 @@ async function handleSave() {
       toast.success('Customer created successfully')
     }
     showDialog.value = false
-    await fetchCustomers()
+    await store.refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Failed to save customer')
@@ -173,7 +134,7 @@ async function handleDelete() {
     toast.success('Customer deleted successfully')
     showDeleteDialog.value = false
     deletingCustomer.value = null
-    await fetchCustomers()
+    await store.refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Failed to delete customer')
@@ -364,8 +325,8 @@ function getFullName(c: any): string {
           <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
             {{ filteredCustomers.length }} record{{ filteredCustomers.length !== 1 ? 's' : '' }}
           </p>
-          <Button variant="ghost" size="sm" class="h-8" @click="fetchCustomers">
-            <Icon name="i-lucide-refresh-cw" class="size-3.5" :class="{ 'animate-spin': loading }" />
+          <Button variant="ghost" size="sm" class="h-8" @click="store.refresh()">
+            <Icon name="i-lucide-refresh-cw" class="size-3.5" />
           </Button>
           <Button size="sm" class="h-8" @click="openCreate">
             <Icon name="i-lucide-plus" class="mr-1 size-3.5" />
@@ -374,31 +335,8 @@ function getFullName(c: any): string {
         </div>
       </Teleport>
 
-      <!-- Error State -->
-      <Card v-if="error" class="border-destructive p-6">
-        <div class="flex flex-col items-center gap-3 text-center">
-          <Icon name="i-lucide-alert-triangle" class="size-10 text-destructive" />
-          <p class="font-medium text-destructive">{{ error }}</p>
-          <Button size="sm" variant="outline" @click="fetchCustomers">
-            <Icon name="i-lucide-refresh-cw" class="mr-1 size-4" />
-            Retry
-          </Button>
-        </div>
-      </Card>
-
-      <!-- Loading Skeleton -->
-      <Card v-else-if="loading" class="p-6">
-        <div class="space-y-4">
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-3/4" />
-        </div>
-      </Card>
-
       <!-- Data Table -->
-      <div v-else class="flex-1 min-h-0 overflow-auto">
+      <div class="flex-1 min-h-0 overflow-auto">
         <Table>
           <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
             <TableRow class="border-b-0">

@@ -1,22 +1,94 @@
 <script setup lang="ts">
+import { cn } from '@/lib/utils'
+import { toast } from 'vue-sonner'
+
 const { setHeader } = usePageHeader()
-const { notifications, init } = useDashboardStore()
-init()
 
 const search = ref('')
 const filterType = ref('')
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
 
-// Unique notification types
-const notificationTypes = computed(() => {
-  const types = new Set<string>()
-  for (const n of notifications.value) {
-    if (n['Notification Type']) types.add(n['Notification Type'])
+// ── Paginated data loading ──────────────────────────────────
+const PAGE_SIZE = 200
+const notifications = ref<any[]>([])
+const totalCount = ref(0)
+const loading = ref(false)
+const allLoaded = ref(false)
+
+async function fetchPage(offset: number) {
+  try {
+    const data = await $fetch<{ success: boolean, notifications: any[], totalCount: number }>(
+      '/api/bigquery/notifications',
+      { params: { offset, limit: PAGE_SIZE } },
+    )
+    if (data.success) {
+      if (offset === 0) {
+        notifications.value = data.notifications
+      }
+      else {
+        notifications.value = [...notifications.value, ...data.notifications]
+      }
+      totalCount.value = data.totalCount
+      if (data.notifications.length < PAGE_SIZE) {
+        allLoaded.value = true
+      }
+    }
   }
-  return Array.from(types).sort()
+  catch {
+    toast.error('Failed to load notifications')
+  }
+}
+
+// Initial load
+async function initialLoad() {
+  loading.value = true
+  await fetchPage(0)
+  loading.value = false
+}
+
+onMounted(initialLoad)
+
+// Load more
+async function loadMore() {
+  if (loading.value || allLoaded.value) return
+  loading.value = true
+  await fetchPage(notifications.value.length)
+  loading.value = false
+}
+
+// Sorting (client-side on loaded data)
+const sortBy = ref('timestamp')
+const sortDir = ref<'asc' | 'desc'>('desc')
+
+function toggleSort(col: string) {
+  if (sortBy.value === col) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  else { sortBy.value = col; sortDir.value = 'desc' }
+}
+
+function sortIcon(col: string) {
+  if (sortBy.value !== col) return 'i-lucide-chevrons-up-down'
+  return sortDir.value === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
+}
+
+// Notification types with counts (from loaded data)
+const notificationTypes = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const n of notifications.value) {
+    const type = n['Notification Type'] || 'Other'
+    counts[type] = (counts[type] || 0) + 1
+  }
+  return Object.entries(counts)
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count)
 })
 
+// Capitalize each first letter
+function titleCase(str: string): string {
+  return str.replace(/\b\w/g, c => c.toUpperCase())
+}
+
+// Helpers
 function formatDate(value: any): string {
   if (!value) return '—'
   try {
@@ -43,15 +115,15 @@ function relativeTime(value: any): string {
   return formatDate(value)
 }
 
-function colorClass(color: string): string {
+function dotColor(color: string): string {
   const c = (color || '').toLowerCase()
-  if (c === 'red' || c === 'error') return 'bg-red-500/10 text-red-500 border-red-500/20'
-  if (c === 'yellow' || c === 'warning') return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-  if (c === 'green' || c === 'success') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-  if (c === 'blue' || c === 'info') return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
-  if (c === 'orange') return 'bg-orange-500/10 text-orange-600 border-orange-500/20'
-  if (c === 'purple') return 'bg-purple-500/10 text-purple-600 border-purple-500/20'
-  return 'bg-muted text-muted-foreground'
+  if (c === 'red' || c === 'error') return 'bg-red-500'
+  if (c === 'yellow' || c === 'warning') return 'bg-amber-500'
+  if (c === 'green' || c === 'success') return 'bg-emerald-500'
+  if (c === 'blue' || c === 'info') return 'bg-blue-500'
+  if (c === 'orange') return 'bg-orange-500'
+  if (c === 'purple') return 'bg-purple-500'
+  return 'bg-zinc-400'
 }
 
 function typeIcon(type: string): string {
@@ -67,6 +139,7 @@ function typeIcon(type: string): string {
   return 'i-lucide-bell'
 }
 
+// Filtering & sorting (client-side on loaded data)
 const filteredNotifications = computed(() => {
   let list = notifications.value
   if (filterType.value) {
@@ -80,7 +153,6 @@ const filteredNotifications = computed(() => {
       || (n.Header || '').toLowerCase().includes(q)
       || (n['Project Address'] || '').toLowerCase().includes(q)
       || (n['Project #'] || '').toLowerCase().includes(q)
-      || (n.Note || '').toLowerCase().includes(q)
       || (n['Notify to'] || '').toLowerCase().includes(q)
       || (n.Priority || '').toLowerCase().includes(q),
     )
@@ -88,109 +160,223 @@ const filteredNotifications = computed(() => {
   return list
 })
 
-watchEffect(() => {
-  setHeader({ title: 'Notifications', icon: 'i-lucide-bell', description: `${filteredNotifications.value.length} notifications` })
+const sortedNotifications = computed(() => {
+  const arr = [...filteredNotifications.value]
+  return arr.sort((a, b) => {
+    let av: any, bv: any
+    if (sortBy.value === 'timestamp') {
+      av = new Date(a['USA TimeStamp']?.value || a.TimeStamp?.value || 0).getTime()
+      bv = new Date(b['USA TimeStamp']?.value || b.TimeStamp?.value || 0).getTime()
+    }
+    else if (sortBy.value === 'when') {
+      av = (a.When || '').toLowerCase()
+      bv = (b.When || '').toLowerCase()
+    }
+    else if (sortBy.value === 'project') {
+      av = (a['Project Address'] || a['Project #'] || '').toLowerCase()
+      bv = (b['Project Address'] || b['Project #'] || '').toLowerCase()
+    }
+    else if (sortBy.value === 'priority') {
+      av = (a.Priority || '').toLowerCase()
+      bv = (b.Priority || '').toLowerCase()
+    }
+    else {
+      av = (a[sortBy.value] || '').toString().toLowerCase()
+      bv = (b[sortBy.value] || '').toString().toLowerCase()
+    }
+    const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv))
+    return sortDir.value === 'asc' ? cmp : -cmp
+  })
 })
 
-// Infinite scroll
-const CHUNK = 50
-const visibleCount = ref(CHUNK)
-const visibleNotifications = computed(() => filteredNotifications.value.slice(0, visibleCount.value))
-const hasMore = computed(() => visibleCount.value < filteredNotifications.value.length)
+// Render-chunking for table (show 50 at a time for DOM perf)
+const RENDER_CHUNK = 50
+const renderCount = ref(RENDER_CHUNK)
+const visibleNotifications = computed(() => sortedNotifications.value.slice(0, renderCount.value))
+const hasMoreVisible = computed(() => renderCount.value < sortedNotifications.value.length)
 
-watch([search, filterType], () => { visibleCount.value = CHUNK })
+watch([search, filterType, sortBy, sortDir], () => { renderCount.value = RENDER_CHUNK })
 
+// Sentinel for render-chunking + load-more
 const sentinelRef = ref<HTMLElement | null>(null)
 onMounted(() => {
   const observer = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting && hasMore.value) visibleCount.value += CHUNK
+    if (entries[0]?.isIntersecting) {
+      if (hasMoreVisible.value) {
+        renderCount.value += RENDER_CHUNK
+      }
+      else if (!allLoaded.value) {
+        loadMore()
+      }
+    }
   }, { threshold: 0.1 })
   watch(sentinelRef, (el) => { if (el) observer.observe(el) }, { immediate: true })
   onUnmounted(() => observer.disconnect())
 })
+
+watchEffect(() => {
+  const loaded = notifications.value.length
+  const total = totalCount.value
+  const showing = filteredNotifications.value.length
+  const desc = total > loaded
+    ? `${showing.toLocaleString()} of ${total.toLocaleString()} notifications`
+    : `${showing.toLocaleString()} notifications`
+  setHeader({ title: 'Notifications', icon: 'i-lucide-bell', description: desc })
+})
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100dvh-54px)]">
-    <!-- Teleport search + filter to header -->
-    <Teleport v-if="isMounted" to="#header-toolbar">
-      <div class="flex items-center gap-2 w-full justify-end">
-        <select
-          v-model="filterType"
-          class="h-8 px-2 pr-7 rounded-lg border border-border bg-background text-xs outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer max-w-[180px]"
-          style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%239ca3af%27 stroke-width=%272%27%3E%3Cpath d=%27m6 9 6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 6px center;"
+  <div class="w-full flex-1 min-h-0 flex">
+    <!-- ═══ Sub-sidebar — same style as ProjectsLayout ═══ -->
+    <div class="w-[220px] shrink-0 border-r bg-card/50 flex flex-col min-h-0 overflow-y-auto">
+      <nav class="flex flex-col gap-0.5 p-2">
+        <!-- All Types -->
+        <button
+          :class="cn(
+            'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 w-full text-left',
+            !filterType
+              ? 'bg-primary/10 text-primary font-medium shadow-sm'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )"
+          @click="filterType = ''"
         >
-          <option value="">All Types</option>
-          <option v-for="t in notificationTypes" :key="t" :value="t">{{ t }}</option>
-        </select>
-        <div class="relative max-w-[220px]">
-          <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input v-model="search" placeholder="Search..." class="pl-8 h-8 text-sm" />
-        </div>
-        <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
-          {{ filteredNotifications.length }} record{{ filteredNotifications.length !== 1 ? 's' : '' }}
-        </p>
-      </div>
-    </Teleport>
+          <Icon name="i-lucide-bell" class="size-4 shrink-0" />
+          <span class="truncate flex-1">All Types</span>
+          <span class="text-[10px] tabular-nums opacity-60">{{ totalCount.toLocaleString() }}</span>
+        </button>
 
-    <!-- Notification list -->
-    <div class="flex-1 overflow-auto">
-      <div class="max-w-4xl mx-auto px-4 py-4 space-y-2">
-        <div
-          v-for="(n, idx) in visibleNotifications"
-          :key="n['Row ID'] || idx"
-          class="flex items-start gap-3 p-3 rounded-xl border border-border/30 hover:border-border/60 hover:bg-muted/20 transition-all group"
+        <!-- Type items -->
+        <button
+          v-for="t in notificationTypes"
+          :key="t.type"
+          :class="cn(
+            'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 w-full text-left',
+            filterType === t.type
+              ? 'bg-primary/10 text-primary font-medium shadow-sm'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )"
+          @click="filterType = filterType === t.type ? '' : t.type"
         >
-          <!-- Icon -->
-          <div class="size-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5" :class="colorClass(n.Color)">
-            <Icon :name="typeIcon(n['Notification Type'])" class="size-4" />
-          </div>
+          <Icon :name="typeIcon(t.type)" class="size-4 shrink-0" />
+          <span class="truncate flex-1">{{ titleCase(t.type) }}</span>
+          <span class="text-[10px] tabular-nums opacity-60">{{ t.count }}</span>
+        </button>
+      </nav>
+    </div>
 
-          <!-- Content -->
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-0.5">
-              <Badge variant="outline" class="text-[9px] font-semibold" :class="colorClass(n.Color)">
-                {{ n['Notification Type'] || 'Notification' }}
-              </Badge>
-              <Badge v-if="n.Priority" variant="outline" class="text-[9px] bg-red-500/10 text-red-500 border-red-500/20">
-                {{ n.Priority }}
-              </Badge>
-              <span class="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{{ relativeTime(n['USA TimeStamp'] || n.TimeStamp) }}</span>
+    <!-- ═══ Content area ═══ -->
+    <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+      <div class="w-full flex-1 flex flex-col min-h-0">
+        <!-- Teleport search to header -->
+        <Teleport v-if="isMounted" to="#header-toolbar">
+          <div class="flex items-center gap-2 w-full justify-end">
+            <div class="relative max-w-[220px]">
+              <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+              <Input v-model="search" placeholder="Search notifications..." class="pl-8 h-8 text-sm" />
             </div>
+            <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
+              {{ totalCount.toLocaleString() }} total
+            </p>
+          </div>
+        </Teleport>
 
-            <p v-if="n.Header" class="text-xs font-semibold leading-snug mb-0.5 whitespace-pre-line line-clamp-2">{{ n.Header }}</p>
-            <p v-else-if="n.When" class="text-xs font-semibold leading-snug mb-0.5 whitespace-pre-line line-clamp-2">{{ n.When }}</p>
-
-            <div class="flex items-center gap-3 mt-1 flex-wrap">
-              <NuxtLink
-                v-if="n['Project #']"
-                :to="`/projects/${n['Project #']}`"
-                class="text-[10px] text-primary hover:underline flex items-center gap-0.5"
-                @click.stop
+        <!-- Data Table -->
+        <div class="flex-1 min-h-0 overflow-auto">
+          <Table>
+            <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
+              <TableRow class="border-b-0">
+                <TableHead class="w-[40px] bg-card" />
+                <TableHead class="min-w-[300px] bg-card cursor-pointer select-none whitespace-nowrap" @click="toggleSort('when')">
+                  <div class="flex items-center gap-1">When <Icon :name="sortIcon('when')" class="size-3 opacity-60" /></div>
+                </TableHead>
+                <TableHead class="min-w-[200px] bg-card cursor-pointer select-none whitespace-nowrap" @click="toggleSort('project')">
+                  <div class="flex items-center gap-1">Project <Icon :name="sortIcon('project')" class="size-3 opacity-60" /></div>
+                </TableHead>
+                <TableHead class="min-w-[80px] bg-card cursor-pointer select-none whitespace-nowrap" @click="toggleSort('priority')">
+                  <div class="flex items-center gap-1">Priority <Icon :name="sortIcon('priority')" class="size-3 opacity-60" /></div>
+                </TableHead>
+                <TableHead class="min-w-[120px] bg-card cursor-pointer select-none whitespace-nowrap text-right" @click="toggleSort('timestamp')">
+                  <div class="flex items-center gap-1 justify-end">Time <Icon :name="sortIcon('timestamp')" class="size-3 opacity-60" /></div>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="(n, idx) in visibleNotifications"
+                :key="n['Row ID'] || idx"
+                class="group hover:bg-muted/50"
               >
-                <Icon name="i-lucide-folder-kanban" class="size-2.5" />
-                {{ n['Project Address'] || n['Project #'] }}
-              </NuxtLink>
-              <span v-if="n['Notify to']" class="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <Icon name="i-lucide-at-sign" class="size-2.5" />
-                {{ n['Notify to'] }}
-              </span>
-              <span v-if="n.Note" class="text-[10px] text-muted-foreground truncate max-w-[200px]">{{ n.Note }}</span>
-            </div>
-          </div>
-        </div>
+                <!-- Color dot -->
+                <TableCell class="px-3 py-2">
+                  <div class="size-2.5 rounded-full shrink-0" :class="dotColor(n.Color)" />
+                </TableCell>
 
-        <!-- Empty -->
-        <div v-if="filteredNotifications.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
-          <Icon name="i-lucide-bell-off" class="size-10 text-muted-foreground/20 mb-3" />
-          <p class="text-sm text-muted-foreground">No notifications found</p>
-        </div>
+                <!-- When -->
+                <TableCell class="py-2">
+                  <span class="text-sm whitespace-pre-line line-clamp-2 max-w-[400px] block">
+                    {{ n.When || n.Header || '—' }}
+                  </span>
+                </TableCell>
 
-        <!-- Load more sentinel -->
-        <div v-if="hasMore" ref="sentinelRef" class="flex items-center justify-center py-4">
-          <Icon name="i-lucide-loader-2" class="size-4 animate-spin text-muted-foreground/40" />
+                <!-- Project -->
+                <TableCell class="py-2">
+                  <NuxtLink
+                    v-if="n['Project #']"
+                    :to="`/projects/${n['Project #']}`"
+                    class="text-sm text-primary hover:underline flex items-center gap-1.5 max-w-[200px]"
+                    @click.stop
+                  >
+                    <Icon name="i-lucide-folder-kanban" class="size-3.5 shrink-0" />
+                    <span class="truncate">{{ n['Project Address'] || n['Project #'] }}</span>
+                  </NuxtLink>
+                  <span v-else class="text-sm text-muted-foreground/40">—</span>
+                </TableCell>
+
+                <!-- Priority -->
+                <TableCell class="py-2">
+                  <Badge v-if="n.Priority" variant="outline" class="text-[10px] bg-red-500/10 text-red-500 border-red-500/20">
+                    {{ n.Priority }}
+                  </Badge>
+                  <span v-else class="text-sm text-muted-foreground/40">—</span>
+                </TableCell>
+
+                <!-- Timestamp -->
+                <TableCell class="py-2 text-right">
+                  <span class="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
+                    {{ relativeTime(n['USA TimeStamp'] || n.TimeStamp) }}
+                  </span>
+                </TableCell>
+              </TableRow>
+
+              <!-- Empty state -->
+              <TableRow v-if="!loading && visibleNotifications.length === 0">
+                <TableCell :colspan="5" class="h-32 text-center">
+                  <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Icon name="i-lucide-bell-off" class="size-8" />
+                    <p>No notifications found</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+
+              <!-- Load more / loading sentinel -->
+              <tr v-if="hasMoreVisible || !allLoaded" ref="sentinelRef">
+                <td :colspan="5" class="h-10 text-center text-xs text-muted-foreground">
+                  <div class="flex items-center justify-center gap-2">
+                    <Icon v-if="loading" name="i-lucide-loader-2" class="size-3.5 animate-spin" />
+                    {{ loading ? 'Loading...' : 'Scroll for more' }}
+                  </div>
+                </td>
+              </tr>
+            </TableBody>
+          </Table>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+:deep([data-slot="table-container"]) {
+  overflow: visible !important;
+}
+</style>

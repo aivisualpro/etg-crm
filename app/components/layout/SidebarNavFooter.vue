@@ -4,7 +4,7 @@ import { useSidebar } from '~/components/ui/sidebar'
 defineProps<{
   user: {
     name: string
-    email: string
+    role: string
     avatar: string
   }
 }>()
@@ -36,7 +36,7 @@ const showModalTheme = ref(false)
             </Avatar>
             <div class="grid flex-1 text-left text-sm leading-tight">
               <span class="truncate font-semibold">{{ user.name }}</span>
-              <span class="truncate text-xs">{{ user.email }}</span>
+              <span class="truncate text-xs">{{ user.role }}</span>
             </div>
             <Icon name="i-lucide-chevrons-up-down" class="ml-auto size-4" />
           </SidebarMenuButton>
@@ -56,7 +56,7 @@ const showModalTheme = ref(false)
               </Avatar>
               <div class="grid flex-1 text-left text-sm leading-tight">
                 <span class="truncate font-semibold">{{ user.name }}</span>
-                <span class="truncate text-xs">{{ user.email }}</span>
+                <span class="truncate text-xs">{{ user.role }}</span>
               </div>
             </div>
           </DropdownMenuLabel>

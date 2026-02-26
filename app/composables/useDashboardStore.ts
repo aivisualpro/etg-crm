@@ -66,7 +66,7 @@ async function _fetchAll() {
     if (_fetching.value) return
     _fetching.value = true
     try {
-        const [projData, eventData, userData, custData, notesData, permitsData, finData, tasksData, paymentsData, ticketsData, vendorsData, salesRepsData, notifData, chatProjData, rolesData] = await Promise.all([
+        const [projData, eventData, userData, custData, notesData, permitsData, finData, tasksData, paymentsData, ticketsData, vendorsData, salesRepsData, chatProjData, rolesData] = await Promise.all([
             $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects').catch(() => ({ success: false, projects: [] })),
             $fetch<{ success: boolean, events: any[] }>('/api/bigquery/events').catch(() => ({ success: false, events: [] })),
             $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
@@ -79,7 +79,6 @@ async function _fetchAll() {
             $fetch<{ success: boolean, tickets: any[] }>('/api/bigquery/tickets').catch(() => ({ success: false, tickets: [] })),
             $fetch<{ success: boolean, vendors: any[] }>('/api/bigquery/vendors').catch(() => ({ success: false, vendors: [] })),
             $fetch<{ success: boolean, salesReps: any[] }>('/api/bigquery/sales-reps').catch(() => ({ success: false, salesReps: [] })),
-            $fetch<{ success: boolean, notifications: any[] }>('/api/bigquery/notifications', { params: { limit: 1000 } }).catch(() => ({ success: false, notifications: [] })),
             $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/chat-projects').catch(() => ({ success: false, projects: [] })),
             $fetch<{ success: boolean, roles: any[] }>('/api/bigquery/roles').catch(() => ({ success: false, roles: [] })),
         ])
@@ -95,7 +94,6 @@ async function _fetchAll() {
         if (ticketsData.success) _tickets.value = ticketsData.tickets
         if (vendorsData.success) _vendors.value = vendorsData.vendors
         if (salesRepsData.success) _salesReps.value = salesRepsData.salesReps
-        if (notifData.success) _notifications.value = notifData.notifications
         if (chatProjData.success) _chatProjects.value = chatProjData.projects
         if (rolesData.success) _roles.value = rolesData.roles
         _buildMaps()

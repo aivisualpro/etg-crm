@@ -16,12 +16,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-bell',
         link: '/notifications',
       },
-      {
-        title: 'Customers',
-        titleKey: 'nav.customers',
-        icon: 'i-lucide-users',
-        link: '/customers',
-      },
     ],
   },
   {
@@ -46,6 +40,12 @@ export const navMenu: NavMenu[] = [
     heading: 'Project Management',
     headingKey: 'nav.projectManagement',
     items: [
+      {
+        title: 'Customers',
+        titleKey: 'nav.customers',
+        icon: 'i-lucide-users',
+        link: '/customers',
+      },
       {
         title: 'Projects',
         titleKey: 'nav.projects',
@@ -75,7 +75,7 @@ export const navMenu: NavMenu[] = [
       {
         title: 'Project Chat',
         icon: 'i-lucide-message-circle',
-        link: '/projects/chat',
+        link: '/project-chats',
       },
       {
         title: 'Tasks',

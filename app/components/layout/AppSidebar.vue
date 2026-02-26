@@ -39,10 +39,19 @@ const teams: {
 ]
 
 const { user: authUser } = useAuth()
+const store = useDashboardStore()
+store.init()
+
+const userRole = computed(() => {
+  const email = (authUser.value?.email || '').toLowerCase()
+  if (!email) return ''
+  const found = store.users.value.find((u: any) => (u.Email || '').toLowerCase() === email)
+  return found?.Role || ''
+})
 
 const user = computed(() => ({
   name: authUser.value?.name || 'User',
-  email: authUser.value?.email || '',
+  role: userRole.value,
   avatar: authUser.value?.picture || '/avatars/default.png',
 }))
 

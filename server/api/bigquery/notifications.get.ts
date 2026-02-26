@@ -1,32 +1,53 @@
 /**
  * GET /api/bigquery/notifications
- * Fetches notifications from the `Notifications` BigQuery table.
- * Supports optional `limit` query param (default 500).
- * Caches for 2 minutes.
+ * Paginated endpoint. Supports `offset` and `limit` query params.
+ * Default: offset=0, limit=200
+ * Also returns `totalCount` on every request (cached separately).
+ * Caches pages for 2 minutes.
  */
-let _cache: { data: any[], timestamp: number } | null = null
+
+let _countCache: { count: number, timestamp: number } | null = null
+const _pageCache = new Map<string, { data: any[], timestamp: number }>()
 const CACHE_TTL = 120_000
 
 export default defineEventHandler(async (event) => {
     const query = getQuery(event)
-    const limit = Math.min(Number(query.limit) || 500, 2000)
+    const offset = Math.max(Number(query.offset) || 0, 0)
+    const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 500)
+    const cacheKey = `${offset}-${limit}`
 
-    if (_cache && Date.now() - _cache.timestamp < CACHE_TTL) {
-        return { success: true, notifications: _cache.data.slice(0, limit) }
+    const bq = useBigQuery()
+    const { bigquery } = useRuntimeConfig()
+    const dataset = bigquery.dataset || 'SWSCRMV4'
+
+    // ── Total count (cached) ─────────────────────────────────
+    let totalCount = _countCache?.count ?? 0
+    if (!_countCache || Date.now() - _countCache.timestamp > CACHE_TTL) {
+        try {
+            const [countRows] = await bq.query({
+                query: `SELECT COUNT(*) as cnt FROM \`${dataset}.Notifications\``,
+                location: 'US',
+            })
+            totalCount = Number(countRows[0]?.cnt ?? 0)
+            _countCache = { count: totalCount, timestamp: Date.now() }
+        }
+        catch { /* keep old count */ }
+    }
+
+    // ── Paginated rows (cached) ──────────────────────────────
+    const cached = _pageCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return { success: true, notifications: cached.data, totalCount }
     }
 
     try {
-        const bq = useBigQuery()
-        const { bigquery } = useRuntimeConfig()
-        const dataset = bigquery.dataset || 'SWSCRMV4'
-
         const [rows] = await bq.query({
-            query: `SELECT * FROM \`${dataset}.Notifications\` ORDER BY \`USA TimeStamp\` DESC LIMIT 2000`,
+            query: `SELECT * FROM \`${dataset}.Notifications\` ORDER BY \`USA TimeStamp\` DESC LIMIT ${limit} OFFSET ${offset}`,
             location: 'US',
         })
 
-        _cache = { data: rows, timestamp: Date.now() }
-        return { success: true, notifications: rows.slice(0, limit) }
+        _pageCache.set(cacheKey, { data: rows, timestamp: Date.now() })
+        return { success: true, notifications: rows, totalCount }
     }
     catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Unknown error'
