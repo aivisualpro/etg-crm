@@ -3,7 +3,7 @@ const { setHeader } = usePageHeader()
 setHeader({ title: 'PM Weekly Report', icon: 'i-lucide-calendar-range', description: 'Project manager weekly performance report' })
 
 // ─── Store ──────────────────────────────────────────────────
-const { projects, userNameMap, customerNameMap, init, refresh } = useDashboardStore()
+const { projects, notes, userNameMap, customerNameMap, init, refresh } = useDashboardStore()
 init()
 
 const isMounted = ref(false)
@@ -147,53 +147,16 @@ function sortIcon(col: string) {
   return sortDir.value === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
 }
 
-// ─── Column definitions (same as all-projects) ─────────────
+// ─── Column definitions (matching PDF report) ──────────────
 const columns = [
-  { key: 'Project ID', label: 'Project ID', width: '110px' },
-  { key: 'Customer name', label: 'Customer', width: '160px' },
-  { key: 'Customer Address', label: 'Address', width: '350px' },
-  { key: 'Branch Name', label: 'Branch', width: '80px' },
-  { key: 'Project Type', label: 'Type', width: '80px' },
+  { key: 'Customer Address', label: 'Project Address', width: '300px' },
   { key: 'Job Status', label: 'Job Status', width: '100px' },
-  { key: 'Project Status', label: 'Project Status', width: '120px' },
-  { key: 'Project Manager', label: 'PM', width: '140px' },
-  { key: 'Project Manager VA', label: 'PM VA', width: '140px' },
-  { key: 'Finance Manager', label: 'Finance Mgr', width: '140px' },
-  { key: 'Engineer', label: 'Engineer', width: '130px' },
-  { key: 'Permit Coordinator', label: 'Permit Coord.', width: '140px' },
-  { key: 'Vendor Name', label: 'Vendor', width: '120px' },
-  { key: 'Project Equipment', label: 'Equipment', width: '150px' },
-  { key: 'Panels Amount', label: 'Panels', width: '70px' },
-  { key: 'KW', label: 'KW', width: '60px' },
-  { key: 'Watt', label: 'Watt', width: '60px' },
-  { key: 'Utillity', label: 'Utility', width: '100px' },
-  { key: 'Solar Equipment', label: 'Solar Equip.', width: '120px' },
-  { key: 'Inverter Type', label: 'Inverter', width: '100px' },
-  { key: 'Batteries Qty', label: 'Batteries', width: '80px' },
-  { key: 'SSA Status', label: 'SSA Status', width: '90px' },
-  { key: 'Solar Install Status', label: 'Solar Install', width: '100px' },
-  { key: 'MPU Installed Status', label: 'MPU Status', width: '100px' },
-  { key: 'Battery Installed Status', label: 'Battery Status', width: '100px' },
-  { key: 'Completion Status', label: 'Completion', width: '100px' },
-  { key: 'Final Status', label: 'Final', width: '90px' },
-  { key: 'PTO Status', label: 'PTO Status', width: '90px' },
-  { key: 'Fire Approval Needed', label: 'Fire Approval', width: '100px' },
-  { key: 'Project Price', label: 'Price', width: '100px' },
-  { key: 'Contract Price', label: 'Contract $', width: '100px' },
-  { key: 'Project Net Amount', label: 'Net Amount', width: '100px' },
-  { key: 'Project Start', label: 'Start Date', width: '100px' },
-  { key: 'Project End', label: 'End Date', width: '100px' },
-  { key: 'Completion Date', label: 'Completion', width: '100px' },
-  { key: 'Final Date', label: 'Final Date', width: '100px' },
-  { key: 'PM Approve Project', label: 'PM Approved', width: '100px' },
-  { key: 'Finance Ready', label: 'Finance Ready', width: '100px' },
-  { key: 'PTO Request', label: 'PTO Request', width: '100px' },
-  { key: 'PTO Submitted', label: 'PTO Submitted', width: '100px' },
-  { key: 'PTO Received', label: 'PTO Received', width: '100px' },
-  { key: 'AHJ', label: 'AHJ', width: '100px' },
-  { key: 'Jurisdiction', label: 'Jurisdiction', width: '120px' },
-  { key: 'Create By', label: 'Created By', width: '130px' },
-  { key: 'TimeStamp', label: 'Created', width: '110px' },
+  { key: 'Project Status', label: 'Project Status', width: '140px' },
+  { key: 'SSA Status', label: 'SSA', width: '100px' },
+  { key: 'Solar Install Status', label: 'Solar Install', width: '110px' },
+  { key: 'Final Status', label: 'Final', width: '100px' },
+  { key: 'PTO Status', label: 'PTO', width: '100px' },
+  { key: 'Completion Date', label: 'Start-Up / Monitor', width: '130px' },
 ]
 
 // ─── Computed table data ────────────────────────────────────
@@ -314,19 +277,55 @@ function downloadPDF() {
   const today = new Date()
   const reportDate = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}-${today.getFullYear()}`
 
-  const tableRows = rows.map(p => `
+  // Build notes lookup: ProjectId → sorted notes
+  const notesMap: Record<string, { date: string, text: string }[]> = {}
+  for (const n of notes.value) {
+    const pid = n.ProjectId
+    if (!pid) continue
+    const noteText = (n.Note || '').trim()
+    if (!noteText) continue
+    if (!notesMap[pid]) notesMap[pid] = []
+    const ts = n['Time Stamp']
+    const dateStr = formatDateShort(ts) || ''
+    notesMap[pid].push({ date: dateStr, text: noteText })
+  }
+  // Sort each project's notes by date descending
+  for (const pid of Object.keys(notesMap)) {
+    notesMap[pid]!.sort((a, b) => {
+      if (!a.date || !b.date) return 0
+      return new Date(b.date).getTime() - new Date(a.date).getTime()
+    })
+  }
+
+  function escapeHtml(str: string) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function getProjectNotes(projectId: string): string {
+    const entries = notesMap[projectId]
+    if (!entries || entries.length === 0) return ''
+    return entries.map(e => {
+      const cleaned = escapeHtml(e.text).replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
+      return e.date ? `${e.date} - ${cleaned}` : cleaned
+    }).join('\n')
+  }
+
+  const tableRows = rows.map(p => {
+    const pid = p['Project ID'] || ''
+    const projectNotes = getProjectNotes(pid)
+    return `
     <tr>
-      <td>${p['Customer Address'] || p['Project Address'] || '—'}</td>
-      <td>${p['Job Status'] || ''}</td>
-      <td>${p['Project Status'] || ''}</td>
-      <td>${formatDateShort(p['SSA Status'] === 'Completed' ? p['Project Start'] : null) || p['SSA Status'] || ''}</td>
-      <td>${formatDateShort(p['Solar Install Status'] === 'Completed' ? p['Project End'] : null) || p['Solar Install Status'] || ''}</td>
-      <td>${formatDateShort(p['Final Date']) || p['Final Status'] || ''}</td>
-      <td>${formatDateShort(p['PTO Received']) || p['PTO Status'] || ''}</td>
+      <td>${escapeHtml(p['Customer Address'] || p['Project Address'] || '\u2014')}</td>
+      <td>${escapeHtml(p['Job Status'] || '')}</td>
+      <td>${escapeHtml(p['Project Status'] || '')}</td>
+      <td>${formatDateShort(p['SSA Status'] === 'Completed' ? p['Project Start'] : null) || escapeHtml(p['SSA Status'] || '')}</td>
+      <td>${formatDateShort(p['Solar Install Status'] === 'Completed' ? p['Project End'] : null) || escapeHtml(p['Solar Install Status'] || '')}</td>
+      <td>${formatDateShort(p['Final Date']) || escapeHtml(p['Final Status'] || '')}</td>
+      <td>${formatDateShort(p['PTO Received']) || escapeHtml(p['PTO Status'] || '')}</td>
       <td>${formatDateShort(p['Completion Date']) || ''}</td>
-      <td></td>
+      <td class="notes-cell">${projectNotes ? `<div class="notes-content">${escapeHtml(projectNotes).replace(/\n/g, '<br>')}</div>` : ''}</td>
     </tr>
-  `).join('')
+  `}).join('')
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>PM Weekly Report</title>
@@ -340,6 +339,8 @@ function downloadPDF() {
   th { background: #f4f6f8; font-weight: 600; font-size: 10px; text-align: left; padding: 6px 8px; border: 1px solid #d0d5dd; white-space: nowrap; }
   td { padding: 5px 8px; border: 1px solid #d0d5dd; font-size: 10px; vertical-align: top; }
   tr:nth-child(even) { background: #fafbfc; }
+  .notes-cell { max-width: 280px; }
+  .notes-content { font-size: 9px; line-height: 1.4; color: #333; white-space: pre-line; }
   @media print {
     body { padding: 20px; }
     @page { size: landscape; margin: 12mm; }
@@ -348,7 +349,7 @@ function downloadPDF() {
 </head><body>
 <h1>Project Weekly Report</h1>
 <p class="subtitle">Report Date: ${reportDate}</p>
-<p class="report-date">Period: ${filterDateFrom.value || 'All'} to ${filterDateTo.value || 'All'}${filterBranch.value ? ' • Branch: ' + filterBranch.value : ''}${filterProjectStatus.value ? ' • Status: ' + filterProjectStatus.value : ''}${filterJobStatus.value ? ' • Job: ' + filterJobStatus.value : ''} • Total: ${rows.length} projects</p>
+<p class="report-date">Period: ${filterDateFrom.value || 'All'} to ${filterDateTo.value || 'All'}${filterBranch.value ? ' \u2022 Branch: ' + filterBranch.value : ''}${filterProjectStatus.value ? ' \u2022 Status: ' + filterProjectStatus.value : ''}${filterJobStatus.value ? ' \u2022 Job: ' + filterJobStatus.value : ''} \u2022 Total: ${rows.length} projects</p>
 <table>
   <thead>
     <tr>
@@ -360,7 +361,7 @@ function downloadPDF() {
       <th>Final</th>
       <th>PTO</th>
       <th>Start-Up / Monitor</th>
-      <th style="min-width:120px">Project Notes</th>
+      <th style="min-width:200px">Project Notes</th>
     </tr>
   </thead>
   <tbody>${tableRows}</tbody>
@@ -399,35 +400,35 @@ function downloadPDF() {
       class="shrink-0 border-r bg-card/50 flex flex-col min-h-0 transition-all duration-200"
       :class="sidebarCollapsed ? 'w-12' : 'w-[280px]'"
     >
-      <!-- Collapse toggle -->
+      <!-- Header with collapse & reset -->
       <div class="flex items-center gap-2 px-3 py-2.5 border-b border-border/40">
         <template v-if="!sidebarCollapsed">
           <Icon name="i-lucide-sliders-horizontal" class="size-3.5 text-primary" />
           <span class="text-xs font-semibold">Filters & Summary</span>
         </template>
-        <button
-          class="size-6 rounded-md flex items-center justify-center hover:bg-muted transition-colors ml-auto"
-          @click="sidebarCollapsed = !sidebarCollapsed"
-        >
-          <Icon :name="sidebarCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'" class="size-3.5 text-muted-foreground" />
-        </button>
+        <div class="flex items-center gap-1 ml-auto">
+          <button
+            v-if="filtersActive && !sidebarCollapsed"
+            class="size-6 rounded-md flex items-center justify-center hover:bg-destructive/10 transition-colors"
+            title="Reset all filters"
+            @click="resetFilters"
+          >
+            <Icon name="i-lucide-rotate-ccw" class="size-3.5 text-destructive" />
+          </button>
+          <button
+            class="size-6 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          >
+            <Icon :name="sidebarCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'" class="size-3.5 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       <!-- Scrollable content -->
       <div v-if="!sidebarCollapsed" class="flex-1 overflow-y-auto p-3 space-y-5">
         <!-- Filters section -->
         <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Filters</h3>
-            <button
-              v-if="filtersActive"
-              class="text-[10px] text-primary font-medium hover:underline flex items-center gap-0.5"
-              @click="resetFilters"
-            >
-              <Icon name="i-lucide-rotate-ccw" class="size-2.5" />
-              Reset
-            </button>
-          </div>
+          <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Filters</h3>
 
           <!-- Date From -->
           <div class="space-y-1">
@@ -495,28 +496,15 @@ function downloadPDF() {
             </select>
           </div>
 
-          <!-- Action buttons -->
-          <div class="flex gap-2">
-            <Button
-              v-if="filtersActive"
-              variant="outline"
-              size="sm"
-              class="flex-1 h-8 text-xs"
-              @click="resetFilters"
-            >
-              <Icon name="i-lucide-rotate-ccw" class="size-3 mr-1.5" />
-              Reset
-            </Button>
-            <Button
-              size="sm"
-              class="h-8 text-xs"
-              :class="filtersActive ? 'flex-1' : 'w-full'"
-              @click="downloadPDF"
-            >
-              <Icon name="i-lucide-file-down" class="size-3 mr-1.5" />
-              Download PDF
-            </Button>
-          </div>
+          <!-- Download PDF -->
+          <Button
+            size="sm"
+            class="w-full h-8 text-xs"
+            @click="downloadPDF"
+          >
+            <Icon name="i-lucide-file-down" class="size-3 mr-1.5" />
+            Download PDF
+          </Button>
         </div>
 
         <!-- Divider -->
