@@ -49,7 +49,20 @@ const isDragging = ref(false)
 const isUploading = ref(false)
 const uploadProgress = ref<{ name: string, done: boolean }[]>([])
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const folderInputRef = ref<HTMLInputElement | null>(null)
 let dragCounter = 0
+
+// Rename state
+const renamingFile = ref<DriveFile | null>(null)
+const renameValue = ref('')
+const renameLoading = ref(false)
+const renameInputRef = ref<HTMLInputElement | null>(null)
+
+// New folder state
+const showNewFolder = ref(false)
+const newFolderName = ref('')
+const newFolderLoading = ref(false)
+const newFolderInputRef = ref<HTMLInputElement | null>(null)
 
 // ─── Extract root folder ID ───────────────────────────────────
 const rootFolderId = computed(() => {
@@ -160,15 +173,23 @@ function openInDrive() {
   window.open(base + au, '_blank', 'noopener,noreferrer')
 }
 
-// ─── Upload ───────────────────────────────────────────────────
-function triggerFileInput() {
-  fileInputRef.value?.click()
-}
+// ─── Upload files ─────────────────────────────────────────────
+function triggerFileInput() { fileInputRef.value?.click() }
+function triggerFolderInput() { folderInputRef.value?.click() }
 
 function onFileInputChange(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) uploadFiles(Array.from(input.files))
-  input.value = '' // allow re-selecting same file
+  if (input.files?.length) uploadFiles(Array.from(input.files), [])
+  input.value = ''
+}
+
+function onFolderInputChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+  const files = Array.from(input.files)
+  const relativePaths = files.map(f => (f as any).webkitRelativePath || f.name)
+  uploadFiles(files, relativePaths)
+  input.value = ''
 }
 
 function onDragEnter(e: DragEvent) {
@@ -183,18 +204,51 @@ function onDragLeave(e: DragEvent) {
   if (dragCounter <= 0) { isDragging.value = false; dragCounter = 0 }
 }
 
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-}
+function onDragOver(e: DragEvent) { e.preventDefault() }
 
-function onDrop(e: DragEvent) {
+async function onDrop(e: DragEvent) {
   e.preventDefault()
   isDragging.value = false
   dragCounter = 0
-  if (e.dataTransfer?.files?.length) uploadFiles(Array.from(e.dataTransfer.files))
+  if (!e.dataTransfer) return
+
+  // Support folder drops via DataTransferItem API
+  const items = Array.from(e.dataTransfer.items)
+  const allFiles: File[] = []
+  const allPaths: string[] = []
+
+  async function traverseEntry(entry: FileSystemEntry, path = '') {
+    if (entry.isFile) {
+      const fileEntry = entry as FileSystemFileEntry
+      await new Promise<void>((resolve) => {
+        fileEntry.file((f) => {
+          allFiles.push(f)
+          allPaths.push(path ? `${path}/${f.name}` : f.name)
+          resolve()
+        })
+      })
+    }
+    else if (entry.isDirectory) {
+      const dirEntry = entry as FileSystemDirectoryEntry
+      const reader = dirEntry.createReader()
+      const entries = await new Promise<FileSystemEntry[]>(resolve => reader.readEntries(resolve))
+      for (const child of entries) {
+        await traverseEntry(child, path ? `${path}/${entry.name}` : entry.name)
+      }
+    }
+  }
+
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const entry = item.webkitGetAsEntry()
+      if (entry) await traverseEntry(entry)
+    }
+  }
+
+  if (allFiles.length > 0) uploadFiles(allFiles, allPaths)
 }
 
-async function uploadFiles(files: File[]) {
+async function uploadFiles(files: File[], relativePaths: string[]) {
   if (!currentFolderId.value || files.length === 0) return
   isUploading.value = true
   uploadProgress.value = files.map(f => ({ name: f.name, done: false }))
@@ -203,6 +257,7 @@ async function uploadFiles(files: File[]) {
     const formData = new FormData()
     formData.append('folderId', currentFolderId.value)
     files.forEach(f => formData.append('files', f))
+    formData.append('relativePaths', JSON.stringify(relativePaths))
 
     const result = await $fetch<{ success: boolean, count: number }>('/api/drive/upload', {
       method: 'POST',
@@ -213,7 +268,6 @@ async function uploadFiles(files: File[]) {
 
     if (result.success) {
       toast.success(`${result.count} file${result.count !== 1 ? 's' : ''} uploaded successfully`)
-      // Refresh the file list
       await fetchFiles(currentFolderId.value!)
     }
   }
@@ -225,6 +279,83 @@ async function uploadFiles(files: File[]) {
       isUploading.value = false
       uploadProgress.value = []
     }, 1000)
+  }
+}
+
+// ─── Rename ───────────────────────────────────────────────────
+function startRename(file: DriveFile, e: MouseEvent) {
+  e.stopPropagation()
+  renamingFile.value = file
+  renameValue.value = file.name
+  nextTick(() => {
+    renameInputRef.value?.focus()
+    renameInputRef.value?.select()
+  })
+}
+
+function cancelRename() {
+  renamingFile.value = null
+  renameValue.value = ''
+}
+
+async function confirmRename() {
+  if (!renamingFile.value || !renameValue.value.trim()) return
+  if (renameValue.value.trim() === renamingFile.value.name) { cancelRename(); return }
+
+  renameLoading.value = true
+  try {
+    await $fetch('/api/drive/rename', {
+      method: 'PATCH',
+      body: { fileId: renamingFile.value.id, name: renameValue.value.trim() },
+    })
+    toast.success('Renamed successfully')
+    // Update local state immediately
+    const idx = currentFiles.value.findIndex(f => f.id === renamingFile.value!.id)
+    if (idx >= 0) currentFiles.value[idx] = { ...currentFiles.value[idx]!, name: renameValue.value.trim() }
+    // Also update breadcrumb if it was a folder in the stack
+    const stackIdx = folderStack.value.findIndex(s => s.id === renamingFile.value!.id)
+    if (stackIdx >= 0) folderStack.value[stackIdx] = { ...folderStack.value[stackIdx]!, name: renameValue.value.trim() }
+    cancelRename()
+  }
+  catch (err: any) {
+    toast.error(err.data?.statusMessage || 'Failed to rename')
+  }
+  finally {
+    renameLoading.value = false
+  }
+}
+
+// ─── New Folder ───────────────────────────────────────────────
+function openNewFolder() {
+  showNewFolder.value = true
+  newFolderName.value = ''
+  nextTick(() => {
+    newFolderInputRef.value?.focus()
+  })
+}
+
+function cancelNewFolder() {
+  showNewFolder.value = false
+  newFolderName.value = ''
+}
+
+async function confirmNewFolder() {
+  if (!newFolderName.value.trim() || !currentFolderId.value) return
+  newFolderLoading.value = true
+  try {
+    const result = await $fetch<{ success: boolean, folder: DriveFile }>('/api/drive/create-folder', {
+      method: 'POST',
+      body: { parentId: currentFolderId.value, name: newFolderName.value.trim() },
+    })
+    toast.success(`Folder "${result.folder.name}" created`)
+    await fetchFiles(currentFolderId.value!)
+    cancelNewFolder()
+  }
+  catch (err: any) {
+    toast.error(err.data?.statusMessage || 'Failed to create folder')
+  }
+  finally {
+    newFolderLoading.value = false
   }
 }
 
@@ -285,6 +416,8 @@ watch(() => props.open, (val) => {
   if (val && rootFolderId.value) {
     folderStack.value = []
     selectedFile.value = null
+    renamingFile.value = null
+    showNewFolder.value = false
     fetchFiles(rootFolderId.value)
   }
 })
@@ -389,24 +522,47 @@ watch(() => props.open, (val) => {
 
                 <div class="w-px h-5 bg-border" />
 
-                <Button
-                  size="sm"
-                  class="h-8 text-xs gap-1.5 rounded-lg bg-gradient-to-r from-[#1da462] to-[#34a853] hover:from-[#1a9058] hover:to-[#2e9648] text-white border-0 shadow-md shadow-emerald-500/20"
-                  :disabled="isUploading"
-                  @click="triggerFileInput"
-                >
-                  <Icon v-if="isUploading" name="i-lucide-loader-2" class="size-3.5 animate-spin" />
-                  <Icon v-else name="i-lucide-upload" class="size-3.5" />
-                  {{ isUploading ? 'Uploading...' : 'Upload Files' }}
-                </Button>
+                <!-- Upload dropdown -->
+                <div class="relative group/upload">
+                  <Button
+                    size="sm"
+                    class="h-8 text-xs gap-1.5 rounded-lg bg-gradient-to-r from-[#1da462] to-[#34a853] hover:from-[#1a9058] hover:to-[#2e9648] text-white border-0 shadow-md shadow-emerald-500/20"
+                    :disabled="isUploading"
+                  >
+                    <Icon v-if="isUploading" name="i-lucide-loader-2" class="size-3.5 animate-spin" />
+                    <Icon v-else name="i-lucide-upload" class="size-3.5" />
+                    {{ isUploading ? 'Uploading...' : 'Upload' }}
+                    <Icon name="i-lucide-chevron-down" class="size-3 ml-0.5" />
+                  </Button>
+                  <!-- Dropdown -->
+                  <div class="absolute right-0 top-full mt-1 w-44 rounded-xl border bg-popover shadow-xl overflow-hidden opacity-0 invisible group-hover/upload:opacity-100 group-hover/upload:visible transition-all duration-150 z-20">
+                    <button
+                      class="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs hover:bg-muted transition-colors text-left"
+                      @click="triggerFileInput"
+                    >
+                      <Icon name="i-lucide-file-up" class="size-3.5 text-primary" />
+                      Upload Files
+                    </button>
+                    <button
+                      class="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs hover:bg-muted transition-colors text-left border-t border-border/50"
+                      @click="triggerFolderInput"
+                    >
+                      <Icon name="i-lucide-folder-up" class="size-3.5 text-amber-500" />
+                      Upload Folder
+                    </button>
+                    <button
+                      class="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs hover:bg-muted transition-colors text-left border-t border-border/50"
+                      @click="openNewFolder"
+                    >
+                      <Icon name="i-lucide-folder-plus" class="size-3.5 text-blue-500" />
+                      New Folder
+                    </button>
+                  </div>
+                </div>
 
-                <input
-                  ref="fileInputRef"
-                  type="file"
-                  multiple
-                  class="hidden"
-                  @change="onFileInputChange"
-                />
+                <!-- Hidden inputs -->
+                <input ref="fileInputRef" type="file" multiple class="hidden" @change="onFileInputChange" />
+                <input ref="folderInputRef" type="file" multiple webkitdirectory class="hidden" @change="onFolderInputChange" />
 
                 <Button
                   variant="ghost"
@@ -450,8 +606,8 @@ watch(() => props.open, (val) => {
                       <Icon name="i-lucide-upload-cloud" class="size-10 text-[#1da462]" />
                     </div>
                     <div class="text-center">
-                      <p class="text-lg font-bold text-[#1da462]">Drop files here</p>
-                      <p class="text-sm text-muted-foreground mt-1">Files will be uploaded to the current folder</p>
+                      <p class="text-lg font-bold text-[#1da462]">Drop files or folders here</p>
+                      <p class="text-sm text-muted-foreground mt-1">Files and full folder structures are supported</p>
                     </div>
                   </div>
                 </div>
@@ -472,7 +628,7 @@ watch(() => props.open, (val) => {
                 >
                   <div class="px-4 py-2.5 bg-gradient-to-r from-[#1da462] to-[#34a853] text-white text-xs font-semibold flex items-center gap-2">
                     <Icon name="i-lucide-upload-cloud" class="size-4" />
-                    Uploading {{ uploadProgress.length }} file{{ uploadProgress.length !== 1 ? 's' : '' }}...
+                    Uploading {{ uploadProgress.length }} item{{ uploadProgress.length !== 1 ? 's' : '' }}...
                   </div>
                   <div class="max-h-40 overflow-y-auto divide-y divide-border/50">
                     <div
@@ -499,6 +655,92 @@ watch(() => props.open, (val) => {
                 </div>
               </Transition>
 
+              <!-- ─── NEW FOLDER INLINE FORM ─── -->
+              <Transition
+                enter-active-class="transition-all duration-200 ease-out"
+                enter-from-class="opacity-0 -translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition-all duration-150"
+                leave-from-class="opacity-100"
+                leave-to-class="opacity-0"
+              >
+                <div
+                  v-if="showNewFolder"
+                  class="absolute top-0 left-0 right-0 z-30 px-6 py-3 border-b bg-card/95 backdrop-blur flex items-center gap-3 shadow-lg"
+                >
+                  <div class="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                    <Icon name="i-lucide-folder-plus" class="size-4 text-blue-500" />
+                  </div>
+                  <input
+                    ref="newFolderInputRef"
+                    v-model="newFolderName"
+                    type="text"
+                    placeholder="Folder name…"
+                    class="flex-1 h-9 px-3 rounded-lg border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                    @keydown.enter="confirmNewFolder"
+                    @keydown.escape="cancelNewFolder"
+                  >
+                  <Button
+                    size="sm"
+                    class="h-9"
+                    :disabled="!newFolderName.trim() || newFolderLoading"
+                    @click="confirmNewFolder"
+                  >
+                    <Icon v-if="newFolderLoading" name="i-lucide-loader-2" class="size-3.5 animate-spin mr-1" />
+                    Create
+                  </Button>
+                  <button class="size-8 rounded-lg hover:bg-muted flex items-center justify-center" @click="cancelNewFolder">
+                    <Icon name="i-lucide-x" class="size-4 text-muted-foreground" />
+                  </button>
+                </div>
+              </Transition>
+
+              <!-- ─── RENAME OVERLAY ─── -->
+              <Transition
+                enter-active-class="transition-all duration-200 ease-out"
+                enter-from-class="opacity-0 scale-95"
+                enter-to-class="opacity-100 scale-100"
+              >
+                <div
+                  v-if="renamingFile"
+                  class="absolute inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                  @click.self="cancelRename"
+                >
+                  <div class="w-full max-w-md mx-6 bg-card rounded-2xl border shadow-2xl overflow-hidden">
+                    <div class="px-5 py-4 border-b flex items-center gap-3">
+                      <div class="size-9 rounded-xl flex items-center justify-center shrink-0" :class="fileIconBg(renamingFile)">
+                        <Icon :name="fileIcon(renamingFile)" class="size-4.5" :class="fileIconColor(renamingFile)" />
+                      </div>
+                      <div>
+                        <p class="text-sm font-semibold">Rename {{ isFolder(renamingFile) ? 'Folder' : 'File' }}</p>
+                        <p class="text-xs text-muted-foreground truncate max-w-[280px]">{{ renamingFile.name }}</p>
+                      </div>
+                    </div>
+                    <div class="p-5 space-y-4">
+                      <input
+                        ref="renameInputRef"
+                        v-model="renameValue"
+                        type="text"
+                        class="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        @keydown.enter="confirmRename"
+                        @keydown.escape="cancelRename"
+                      >
+                      <div class="flex gap-2 justify-end">
+                        <Button variant="outline" size="sm" @click="cancelRename">Cancel</Button>
+                        <Button
+                          size="sm"
+                          :disabled="!renameValue.trim() || renameLoading"
+                          @click="confirmRename"
+                        >
+                          <Icon v-if="renameLoading" name="i-lucide-loader-2" class="size-3.5 animate-spin mr-1" />
+                          Rename
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+
               <!-- ─── FILE LIST PANEL ─── -->
               <div
                 class="flex flex-col min-h-0 overflow-hidden border-r transition-all duration-300 ease-in-out bg-card"
@@ -509,6 +751,7 @@ watch(() => props.open, (val) => {
                   <span class="flex-1">Name</span>
                   <span class="w-16 text-right" :class="{ 'hidden': selectedFile }">Size</span>
                   <span class="w-24 text-right" :class="{ 'hidden': selectedFile }">Modified</span>
+                  <span class="w-20 text-right" :class="{ 'hidden': selectedFile }">Actions</span>
                 </div>
 
                 <!-- Loading skeleton -->
@@ -546,7 +789,7 @@ watch(() => props.open, (val) => {
                   </div>
                   <div>
                     <p class="font-semibold">No files yet</p>
-                    <p class="text-sm text-muted-foreground mt-1">Drag & drop or click to upload</p>
+                    <p class="text-sm text-muted-foreground mt-1">Drag & drop files or folders, or click Upload</p>
                   </div>
                   <Button size="sm" class="bg-[#1da462] hover:bg-[#1a9058] text-white" @click="triggerFileInput">
                     <Icon name="i-lucide-upload" class="mr-1.5 size-3.5" />
@@ -590,7 +833,7 @@ watch(() => props.open, (val) => {
                       </p>
                     </div>
 
-                    <!-- Size (shown when no preview panel) -->
+                    <!-- Size -->
                     <span
                       v-if="!isFolder(file) && !selectedFile"
                       class="w-16 text-right text-xs text-muted-foreground tabular-nums shrink-0"
@@ -598,7 +841,7 @@ watch(() => props.open, (val) => {
                       {{ formatSize(file.size) }}
                     </span>
 
-                    <!-- Date (shown when no preview panel) -->
+                    <!-- Date -->
                     <span
                       v-if="!selectedFile"
                       class="w-24 text-right text-xs text-muted-foreground shrink-0"
@@ -607,32 +850,45 @@ watch(() => props.open, (val) => {
                     </span>
 
                     <!-- Action buttons -->
-                    <div v-if="!isFolder(file)" class="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                    <div class="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity w-20 justify-end">
+                      <!-- Rename (files & folders) -->
                       <button
-                        v-if="canPreview(file)"
-                        class="size-7 rounded-lg flex items-center justify-center hover:bg-primary/10 text-primary transition-colors"
-                        title="Preview"
-                        @click.stop="openFile(file)"
+                        class="size-7 rounded-lg flex items-center justify-center hover:bg-amber-500/10 text-amber-600 transition-colors"
+                        title="Rename"
+                        @click.stop="startRename(file, $event)"
                       >
-                        <Icon name="i-lucide-eye" class="size-3.5" />
+                        <Icon name="i-lucide-pencil-line" class="size-3.5" />
                       </button>
-                      <button
-                        class="size-7 rounded-lg flex items-center justify-center hover:bg-blue-500/10 text-blue-500 transition-colors"
-                        title="Download"
-                        @click.stop="downloadFile(file)"
-                      >
-                        <Icon name="i-lucide-download" class="size-3.5" />
-                      </button>
-                      <button
-                        class="size-7 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground transition-colors"
-                        title="Open in Drive"
-                        @click.stop="openExternal(file)"
-                      >
-                        <Icon name="i-lucide-external-link" class="size-3.5" />
-                      </button>
-                    </div>
-                    <div v-else class="shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                      <Icon name="i-lucide-chevron-right" class="size-4 text-muted-foreground" />
+
+                      <!-- Folder: open -->
+                      <template v-if="isFolder(file)">
+                        <button
+                          class="size-7 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground transition-colors"
+                          title="Open in Drive"
+                          @click.stop="openExternal(file)"
+                        >
+                          <Icon name="i-lucide-external-link" class="size-3.5" />
+                        </button>
+                      </template>
+
+                      <!-- File: preview/download/open -->
+                      <template v-else>
+                        <button
+                          v-if="canPreview(file)"
+                          class="size-7 rounded-lg flex items-center justify-center hover:bg-primary/10 text-primary transition-colors"
+                          title="Preview"
+                          @click.stop="openFile(file)"
+                        >
+                          <Icon name="i-lucide-eye" class="size-3.5" />
+                        </button>
+                        <button
+                          class="size-7 rounded-lg flex items-center justify-center hover:bg-blue-500/10 text-blue-500 transition-colors"
+                          title="Download"
+                          @click.stop="downloadFile(file)"
+                        >
+                          <Icon name="i-lucide-download" class="size-3.5" />
+                        </button>
+                      </template>
                     </div>
                   </button>
                 </div>
@@ -664,6 +920,15 @@ watch(() => props.open, (val) => {
                       </p>
                     </div>
                     <div class="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        class="h-7 text-xs gap-1 rounded-lg"
+                        @click="startRename(selectedFile, $event)"
+                      >
+                        <Icon name="i-lucide-pencil-line" class="size-3" />
+                        Rename
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -709,7 +974,6 @@ watch(() => props.open, (val) => {
                           >
                             <Icon :name="fileIcon(selectedFile)" class="size-10" :class="fileIconColor(selectedFile)" />
                           </div>
-                          <!-- Spinner ring -->
                           <div class="absolute inset-0 rounded-3xl border-2 border-transparent border-t-primary animate-spin" />
                         </div>
                         <div class="text-center space-y-1">
@@ -775,7 +1039,7 @@ watch(() => props.open, (val) => {
               <div class="flex items-center gap-3">
                 <span v-if="isUploading" class="text-xs font-medium text-[#1da462] flex items-center gap-1.5">
                   <Icon name="i-lucide-loader-2" class="size-3 animate-spin" />
-                  Uploading files...
+                  Uploading...
                 </span>
                 <button
                   class="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 font-medium"
