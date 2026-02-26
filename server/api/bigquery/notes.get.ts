@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
         }
 
         const whereClause = projectId
-            ? ` WHERE \`Project ID\` = '${projectId.replace(/'/g, "\\'")}'`
+            ? ` WHERE \`ProjectId\` = '${projectId.replace(/'/g, "\\'")}'`
             : ''
 
         const [activeRows, closedRows] = await Promise.all([
