@@ -1,53 +1,22 @@
 <script setup lang="ts">
-import { toast } from 'vue-sonner'
-
 const { setHeader } = usePageHeader()
 setHeader({ title: 'Finances', icon: 'i-lucide-banknote' })
 
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
 
+// ─── Use global prefetched store ────────────────────────────
+const {
+  finance: financeRecords,
+  userNameMap,
+  projectMap,
+  init,
+} = useDashboardStore()
+init()
+
 // ─── State ──────────────────────────────────────────────────
-const financeRecords = ref<any[]>([])
-const loading = ref(true)
 const search = ref('')
 const activeFilter = ref('')
-
-// Lookups
-const userNameMap = ref<Record<string, string>>({})
-const projectMap = ref<Record<string, any>>({})
-
-// ─── Fetch ──────────────────────────────────────────────────
-async function fetchAll() {
-  loading.value = true
-  try {
-    const [finData, userData, projData] = await Promise.all([
-      $fetch<{ success: boolean, finance: any[] }>('/api/bigquery/project-finance'),
-      $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
-      $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects').catch(() => ({ success: false, projects: [] })),
-    ])
-    if (finData.success) financeRecords.value = finData.finance
-    if (userData.success) {
-      userNameMap.value = Object.fromEntries(
-        userData.users.filter((u: any) => u.Email).map((u: any) => [
-          u.Email.toLowerCase(),
-          [u['First Name'], u['Last Name']].filter(Boolean).join(' ') || u.Email,
-        ]),
-      )
-    }
-    if (projData.success) {
-      projectMap.value = Object.fromEntries(
-        projData.projects.filter((p: any) => p['Project ID']).map((p: any) => [p['Project ID'], p]),
-      )
-    }
-  }
-  catch {
-    toast.error('Failed to load finance data')
-  }
-  finally { loading.value = false }
-}
-
-onMounted(fetchAll)
 
 // ─── Unique companies ───────────────────────────────────────
 const companies = computed(() => {
@@ -89,7 +58,7 @@ const filteredRecords = computed(() => {
       <!-- Shared Finance Table Component -->
       <FinancesTable
         :records="filteredRecords"
-        :loading="loading"
+        :loading="false"
         :user-name-map="userNameMap"
         :project-map="projectMap"
         :show-project="true"

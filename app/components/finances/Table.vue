@@ -13,7 +13,7 @@
  *   perPage       — rows per page (default: 50, use smaller in compact)
  */
 const props = withDefaults(defineProps<{
-  records: any[]
+  records: readonly any[]
   loading?: boolean
   userNameMap?: Record<string, string>
   projectMap?: Record<string, any>

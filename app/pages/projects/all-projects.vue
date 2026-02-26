@@ -5,9 +5,6 @@ const { setHeader } = usePageHeader()
 setHeader({ title: 'All Projects', icon: 'i-lucide-folder-kanban' })
 
 // ─── State ──────────────────────────────────────────────────
-const projects = ref<any[]>([])
-const loading = ref(true)
-const error = ref('')
 const search = ref('')
 const CHUNK_SIZE = 30
 const visibleCount = ref(CHUNK_SIZE)
@@ -55,8 +52,8 @@ async function confirmDelete() {
       body: { projectId: deletingProject.value['Project ID'] },
     })
     toast.success('Project deleted')
-    projects.value = projects.value.filter(p => p['Project ID'] !== deletingProject.value['Project ID'])
     showDeleteConfirm.value = false
+    refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Failed to delete')
@@ -67,65 +64,18 @@ async function confirmDelete() {
 }
 
 function onProjectSaved() {
-  fetchProjects()
+  refresh()
 }
 
-// Lookup maps: email → name, customerId → name
-const userNameMap = ref<Record<string, string>>({})
-const customerNameMap = ref<Record<string, string>>({})
-
-// ─── Fetch ──────────────────────────────────────────────────
-async function fetchProjects() {
-  loading.value = true
-  error.value = ''
-  try {
-    // Phase 1: Load projects first → table renders immediately
-    const projectData = await $fetch<{ success: boolean, projects: any[], count: number }>('/api/bigquery/projects')
-    if (projectData.success) projects.value = projectData.projects
-  }
-  catch (e: any) {
-    error.value = e.data?.statusMessage || e.message || 'Failed to load projects'
-    toast.error('Failed to load projects from BigQuery')
-  }
-  finally {
-    loading.value = false
-  }
-
-  // Phase 2: Load users & customers in the background (non-blocking)
-  // Names will reactively resolve once these complete
-  loadLookupData()
-}
-
-async function loadLookupData() {
-  const [userData, customerData] = await Promise.all([
-    $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
-    $fetch<{ success: boolean, customers: any[] }>('/api/bigquery/customers').catch(() => ({ success: false, customers: [] })),
-  ])
-  // Build email → full name lookup
-  if (userData.success) {
-    userNameMap.value = Object.fromEntries(
-      userData.users
-        .filter((u: any) => u.Email)
-        .map((u: any) => [
-          u.Email.toLowerCase(),
-          [u['First Name'], u['Last Name']].filter(Boolean).join(' ') || u.Email,
-        ]),
-    )
-  }
-  // Build customerId → full name lookup
-  if (customerData.success) {
-    customerNameMap.value = Object.fromEntries(
-      customerData.customers
-        .filter((c: any) => c['Customer ID'])
-        .map((c: any) => [
-          c['Customer ID'],
-          [c['First Name'], c['Last Name']].filter(Boolean).join(' ') || c['Customer ID'],
-        ]),
-    )
-  }
-}
-
-onMounted(fetchProjects)
+// ─── Use global prefetched store ────────────────────────────
+const {
+  projects,
+  userNameMap,
+  customerNameMap,
+  init,
+  refresh,
+} = useDashboardStore()
+init()
 
 // ─── Sorting ────────────────────────────────────────────────
 const sortBy = ref('TimeStamp')
@@ -326,8 +276,8 @@ const currencyColumns = ['Project Price', 'Contract Price', 'Project Net Amount'
           <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
             {{ filteredProjects.length }} record{{ filteredProjects.length !== 1 ? 's' : '' }}
           </p>
-          <Button variant="ghost" size="sm" class="h-8" @click="fetchProjects">
-            <Icon name="i-lucide-refresh-cw" class="size-3.5" :class="{ 'animate-spin': loading }" />
+          <Button variant="ghost" size="sm" class="h-8" @click="refresh()">
+            <Icon name="i-lucide-refresh-cw" class="size-3.5" />
           </Button>
           <Button size="sm" class="h-8" @click="openCreateForm">
             <Icon name="i-lucide-plus" class="size-3.5 mr-1" />
@@ -336,31 +286,8 @@ const currencyColumns = ['Project Price', 'Contract Price', 'Project Net Amount'
         </div>
       </Teleport>
 
-      <!-- Error State -->
-      <Card v-if="error" class="border-destructive p-6 m-4">
-        <div class="flex flex-col items-center gap-3 text-center">
-          <Icon name="i-lucide-alert-triangle" class="size-10 text-destructive" />
-          <p class="font-medium text-destructive">{{ error }}</p>
-          <Button size="sm" variant="outline" @click="fetchProjects">
-            <Icon name="i-lucide-refresh-cw" class="mr-1 size-4" />
-            Retry
-          </Button>
-        </div>
-      </Card>
-
-      <!-- Loading Skeleton -->
-      <Card v-else-if="loading" class="p-6 m-4">
-        <div class="space-y-4">
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-3/4" />
-        </div>
-      </Card>
-
       <!-- Data Table -->
-      <div v-else class="flex-1 min-h-0 overflow-auto">
+      <div class="flex-1 min-h-0 overflow-auto">
         <Table>
           <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
             <TableRow class="border-b-0">

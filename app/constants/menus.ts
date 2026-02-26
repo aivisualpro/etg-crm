@@ -48,6 +48,11 @@ export const navMenu: NavMenu[] = [
         link: '/projects/all-projects',
       },
       {
+        title: 'Permits',
+        icon: 'i-lucide-clipboard-check',
+        link: '/permits',
+      },
+      {
         title: 'Finances',
         icon: 'i-lucide-banknote',
         link: '/finances',
@@ -68,6 +73,11 @@ export const navMenu: NavMenu[] = [
         titleKey: 'nav.tasks',
         icon: 'i-lucide-calendar-check-2',
         link: '/tasks',
+      },
+      {
+        title: 'Notes',
+        icon: 'i-lucide-sticky-note',
+        link: '/notes',
       },
     ],
   },

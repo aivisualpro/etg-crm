@@ -11,6 +11,9 @@ const _projects = ref<any[]>([])
 const _events = ref<any[]>([])
 const _users = ref<any[]>([])
 const _customers = ref<any[]>([])
+const _notes = ref<any[]>([])
+const _permits = ref<any[]>([])
+const _finance = ref<any[]>([])
 
 const _userNameMap = ref<Record<string, string>>({})
 const _customerNameMap = ref<Record<string, string>>({})
@@ -55,16 +58,22 @@ async function _fetchAll() {
     if (_fetching.value) return
     _fetching.value = true
     try {
-        const [projData, eventData, userData, custData] = await Promise.all([
+        const [projData, eventData, userData, custData, notesData, permitsData, finData] = await Promise.all([
             $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects').catch(() => ({ success: false, projects: [] })),
             $fetch<{ success: boolean, events: any[] }>('/api/bigquery/events').catch(() => ({ success: false, events: [] })),
             $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
             $fetch<{ success: boolean, customers: any[] }>('/api/bigquery/customers').catch(() => ({ success: false, customers: [] })),
+            $fetch<{ success: boolean, notes: any[] }>('/api/bigquery/notes').catch(() => ({ success: false, notes: [] })),
+            $fetch<{ success: boolean, permits: any[] }>('/api/bigquery/permits').catch(() => ({ success: false, permits: [] })),
+            $fetch<{ success: boolean, finance: any[] }>('/api/bigquery/project-finance').catch(() => ({ success: false, finance: [] })),
         ])
         if (projData.success) _projects.value = projData.projects
         if (eventData.success) _events.value = eventData.events
         if (userData.success) _users.value = userData.users
         if (custData.success) _customers.value = custData.customers
+        if (notesData.success) _notes.value = notesData.notes
+        if (permitsData.success) _permits.value = permitsData.permits
+        if (finData.success) _finance.value = finData.finance
         _buildMaps()
         _lastFetched.value = Date.now()
     }
@@ -104,6 +113,9 @@ export function useDashboardStore() {
         events: readonly(_events),
         users: readonly(_users),
         customers: readonly(_customers),
+        notes: readonly(_notes),
+        permits: readonly(_permits),
+        finance: readonly(_finance),
         userNameMap: readonly(_userNameMap),
         customerNameMap: readonly(_customerNameMap),
         projectMap: readonly(_projectMap),

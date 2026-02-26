@@ -5,9 +5,6 @@ const { setHeader } = usePageHeader()
 setHeader({ title: 'Users', icon: 'i-lucide-user-cog' })
 
 // ─── State ──────────────────────────────────────────────────
-const users = ref<any[]>([])
-const loading = ref(true)
-const error = ref('')
 const search = ref('')
 const CHUNK_SIZE = 30
 const visibleCount = ref(CHUNK_SIZE)
@@ -24,6 +21,10 @@ const formData = ref<Record<string, any>>({})
 // Teleport mount check
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
+
+// ─── Use global prefetched store ────────────────────────────
+const { users, init, refresh } = useDashboardStore()
+init()
 
 // ─── Form Fields ─────────────────────────────────────────────
 const formFields = [
@@ -46,26 +47,7 @@ const formFields = [
   },
 ]
 
-// ─── Fetch ──────────────────────────────────────────────────
-async function fetchUsers() {
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await $fetch<{ success: boolean, users: any[], count: number }>('/api/bigquery/users')
-    if (data.success) {
-      users.value = data.users
-    }
-  }
-  catch (e: any) {
-    error.value = e.data?.statusMessage || e.message || 'Failed to load users'
-    toast.error('Failed to load users from BigQuery')
-  }
-  finally {
-    loading.value = false
-  }
-}
 
-onMounted(fetchUsers)
 
 // ─── CRUD Handlers ──────────────────────────────────────────
 function openCreate() {
@@ -106,7 +88,7 @@ async function handleSave() {
       toast.success('User created successfully')
     }
     showDialog.value = false
-    await fetchUsers()
+    await refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Failed to save user')
@@ -131,7 +113,7 @@ async function handleDelete() {
     toast.success('User deleted successfully')
     showDeleteDialog.value = false
     deletingUser.value = null
-    await fetchUsers()
+    await refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Failed to delete user')
@@ -274,8 +256,8 @@ function statusLabel(u: any): boolean {
           <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
             {{ filteredUsers.length }} record{{ filteredUsers.length !== 1 ? 's' : '' }}
           </p>
-          <Button variant="ghost" size="sm" class="h-8" @click="fetchUsers">
-            <Icon name="i-lucide-refresh-cw" class="size-3.5" :class="{ 'animate-spin': loading }" />
+          <Button variant="ghost" size="sm" class="h-8" @click="refresh()">
+            <Icon name="i-lucide-refresh-cw" class="size-3.5" />
           </Button>
           <Button size="sm" class="h-8" @click="openCreate">
             <Icon name="i-lucide-plus" class="mr-1 size-3.5" />
@@ -284,31 +266,8 @@ function statusLabel(u: any): boolean {
         </div>
       </Teleport>
 
-      <!-- Error State -->
-      <Card v-if="error" class="border-destructive p-6">
-        <div class="flex flex-col items-center gap-3 text-center">
-          <Icon name="i-lucide-alert-triangle" class="size-10 text-destructive" />
-          <p class="font-medium text-destructive">{{ error }}</p>
-          <Button size="sm" variant="outline" @click="fetchUsers">
-            <Icon name="i-lucide-refresh-cw" class="mr-1 size-4" />
-            Retry
-          </Button>
-        </div>
-      </Card>
-
-      <!-- Loading Skeleton -->
-      <Card v-else-if="loading" class="p-6">
-        <div class="space-y-4">
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-full" />
-          <Skeleton class="h-10 w-3/4" />
-        </div>
-      </Card>
-
       <!-- Data Table -->
-      <div v-else class="flex-1 min-h-0 overflow-auto">
+      <div class="flex-1 min-h-0 overflow-auto">
         <Table>
           <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
             <TableRow class="border-b-0">

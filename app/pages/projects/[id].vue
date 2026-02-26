@@ -31,6 +31,16 @@ const financeRecords = ref<any[]>([])
 const financeLoading = ref(false)
 const financeLoaded = ref(false)
 
+// Notes
+const projectNotes = ref<any[]>([])
+const notesLoading = ref(false)
+const notesLoaded = ref(false)
+
+// Permits
+const projectPermits = ref<any[]>([])
+const permitsLoading = ref(false)
+const permitsLoaded = ref(false)
+
 // Lookups
 const userNameMap = ref<Record<string, string>>({})
 const customerNameMap = ref<Record<string, string>>({})
@@ -110,7 +120,29 @@ async function fetchFinance() {
   finally { financeLoading.value = false; financeLoaded.value = true }
 }
 
-onMounted(() => { fetchProject(); fetchChats(); fetchEvents(); fetchFinance() })
+async function fetchNotes() {
+  if (notesLoaded.value || notesLoading.value) return
+  notesLoading.value = true
+  try {
+    const data = await $fetch<{ success: boolean, notes: any[] }>('/api/bigquery/notes', { params: { projectId: projectId.value } })
+    if (data.success) projectNotes.value = data.notes
+  }
+  catch { toast.error('Failed to load notes') }
+  finally { notesLoading.value = false; notesLoaded.value = true }
+}
+
+async function fetchPermits() {
+  if (permitsLoaded.value || permitsLoading.value) return
+  permitsLoading.value = true
+  try {
+    const data = await $fetch<{ success: boolean, permits: any[] }>('/api/bigquery/permits', { params: { projectId: projectId.value } })
+    if (data.success) projectPermits.value = data.permits
+  }
+  catch { toast.error('Failed to load permits') }
+  finally { permitsLoading.value = false; permitsLoaded.value = true }
+}
+
+onMounted(() => { fetchProject(); fetchChats(); fetchEvents(); fetchFinance(); fetchNotes(); fetchPermits() })
 
 // ─── Header computed ────────────────────────────────────────
 const customerName = computed(() => {
@@ -414,9 +446,19 @@ function cardHasMatch(cardId: string): boolean {
       textMatches(msg.Chat) || textMatches(msg.Email) || textMatches(resolveName(msg.Email))
     )
   }
+  if (cardId === 'notes') {
+    return projectNotes.value.some((n: any) =>
+      textMatches(n.Note) || textMatches(n['Note Category']) || textMatches(n['Create By'])
+    )
+  }
   if (cardId === 'events') {
     return projectEvents.value.some((evt: any) =>
       textMatches(evt['Event Type']) || textMatches(evt['Event Description']) || textMatches(evt['Event Status'])
+    )
+  }
+  if (cardId === 'permits') {
+    return projectPermits.value.some((p: any) =>
+      textMatches(p['Permit Type']) || textMatches(p['Permit Status']) || textMatches(p['Permit Number']) || textMatches(p['Permit Note'])
     )
   }
   return false
@@ -530,6 +572,8 @@ function cardHasMatch(cardId: string): boolean {
                     <h3 class="card-title">{{ card.title }}</h3>
                     <Badge v-if="card.id === 'chat-room' && chatConversations.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ chatConversations.length }}</Badge>
                     <Badge v-if="card.id === 'events' && projectEvents.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectEvents.length }}</Badge>
+                    <Badge v-if="card.id === 'notes' && projectNotes.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectNotes.length }}</Badge>
+                    <Badge v-if="card.id === 'permits' && projectPermits.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectPermits.length }}</Badge>
                     <!-- Size controls -->
                     <div class="size-controls">
                       <button class="size-btn" :disabled="getSpanIndex(card.id) <= 0" title="Decrease width" @click.stop="decreaseSpan(card.id)">
@@ -567,8 +611,22 @@ function cardHasMatch(cardId: string): boolean {
                     </div>
                   </template>
 
-                  <!-- PLACEHOLDERS: Documents / Payments / Permits -->
-                  <template v-else-if="['documents', 'payments', 'permits'].includes(card.id)">
+                  <!-- PERMITS -->
+                  <template v-else-if="card.id === 'permits'">
+                    <PermitsTable
+                      :records="projectPermits"
+                      :loading="permitsLoading"
+                      :user-name-map="userNameMap"
+                      :show-project="false"
+                      :compact="true"
+                      :per-page="10"
+                      :hide-search="true"
+                      :search-query="globalSearch"
+                    />
+                  </template>
+
+                  <!-- PLACEHOLDERS: Documents / Payments -->
+                  <template v-else-if="['documents', 'payments'].includes(card.id)">
                     <div class="flex flex-col items-center justify-center py-10 text-center">
                       <Icon :name="card.icon" class="size-9 text-muted-foreground/15 mb-2" />
                       <p class="text-xs text-muted-foreground/60">Coming soon</p>
@@ -630,10 +688,17 @@ function cardHasMatch(cardId: string): boolean {
 
                   <!-- NOTES -->
                   <template v-else-if="card.id === 'notes'">
-                    <div class="flex flex-col items-center justify-center py-10 text-center">
-                      <Icon name="i-lucide-sticky-note" class="size-9 text-muted-foreground/15 mb-2" />
-                      <p class="text-xs text-muted-foreground/60">No notes yet</p>
-                    </div>
+                    <NotesTable
+                      :records="projectNotes"
+                      :loading="notesLoading"
+                      :user-name-map="userNameMap"
+                      :customer-map="customerNameMap"
+                      :show-project="false"
+                      :compact="true"
+                      :per-page="10"
+                      :hide-search="true"
+                      :search-query="globalSearch"
+                    />
                   </template>
 
                   <!-- EVENTS -->
