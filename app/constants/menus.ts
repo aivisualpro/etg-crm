@@ -91,15 +91,8 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-kanban',
         link: '/kanban',
       },
-      {
-        title: 'Gantt Chart',
-        titleKey: 'nav.ganttChart',
-        icon: 'i-lucide-gantt-chart',
-        link: '/gantt',
-      },
     ],
   },
-
 
   {
     heading: 'Support',

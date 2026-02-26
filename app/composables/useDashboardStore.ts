@@ -14,6 +14,7 @@ const _customers = ref<any[]>([])
 const _notes = ref<any[]>([])
 const _permits = ref<any[]>([])
 const _finance = ref<any[]>([])
+const _tasks = ref<any[]>([])
 
 const _userNameMap = ref<Record<string, string>>({})
 const _customerNameMap = ref<Record<string, string>>({})
@@ -58,7 +59,7 @@ async function _fetchAll() {
     if (_fetching.value) return
     _fetching.value = true
     try {
-        const [projData, eventData, userData, custData, notesData, permitsData, finData] = await Promise.all([
+        const [projData, eventData, userData, custData, notesData, permitsData, finData, tasksData] = await Promise.all([
             $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects').catch(() => ({ success: false, projects: [] })),
             $fetch<{ success: boolean, events: any[] }>('/api/bigquery/events').catch(() => ({ success: false, events: [] })),
             $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
@@ -66,6 +67,7 @@ async function _fetchAll() {
             $fetch<{ success: boolean, notes: any[] }>('/api/bigquery/notes').catch(() => ({ success: false, notes: [] })),
             $fetch<{ success: boolean, permits: any[] }>('/api/bigquery/permits').catch(() => ({ success: false, permits: [] })),
             $fetch<{ success: boolean, finance: any[] }>('/api/bigquery/project-finance').catch(() => ({ success: false, finance: [] })),
+            $fetch<{ success: boolean, tasks: any[] }>('/api/bigquery/tasks').catch(() => ({ success: false, tasks: [] })),
         ])
         if (projData.success) _projects.value = projData.projects
         if (eventData.success) _events.value = eventData.events
@@ -74,6 +76,7 @@ async function _fetchAll() {
         if (notesData.success) _notes.value = notesData.notes
         if (permitsData.success) _permits.value = permitsData.permits
         if (finData.success) _finance.value = finData.finance
+        if (tasksData.success) _tasks.value = tasksData.tasks
         _buildMaps()
         _lastFetched.value = Date.now()
     }
@@ -116,6 +119,7 @@ export function useDashboardStore() {
         notes: readonly(_notes),
         permits: readonly(_permits),
         finance: readonly(_finance),
+        tasks: readonly(_tasks),
         userNameMap: readonly(_userNameMap),
         customerNameMap: readonly(_customerNameMap),
         projectMap: readonly(_projectMap),
