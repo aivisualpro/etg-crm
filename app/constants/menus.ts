@@ -50,7 +50,20 @@ export const navMenu: NavMenu[] = [
         title: 'Projects',
         titleKey: 'nav.projects',
         icon: 'i-lucide-folder-kanban',
-        link: '/projects/all-projects',
+        children: [
+          {
+            title: 'All Projects',
+            link: '/projects/all-projects',
+          },
+          {
+            title: 'My Open Projects',
+            link: '/projects/my-open',
+          },
+          {
+            title: 'My Closed Projects',
+            link: '/projects/my-closed',
+          },
+        ],
       },
       {
         title: 'Permits',
