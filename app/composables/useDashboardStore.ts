@@ -13,6 +13,7 @@ const _users = ref<any[]>([])
 const _customers = ref<any[]>([])
 const _notes = ref<any[]>([])
 const _permits = ref<any[]>([])
+const _documentRequests = ref<any[]>([])
 const _finance = ref<any[]>([])
 const _tasks = ref<any[]>([])
 const _payments = ref<any[]>([])
@@ -67,13 +68,14 @@ async function _fetchAll() {
     if (_fetching.value) return
     _fetching.value = true
     try {
-        const [projData, eventData, userData, custData, notesData, permitsData, finData, tasksData, paymentsData, ticketsData, vendorsData, salesRepsData, chatProjData, rolesData] = await Promise.all([
+        const [projData, eventData, userData, custData, notesData, permitsData, docReqData, finData, tasksData, paymentsData, ticketsData, vendorsData, salesRepsData, chatProjData, rolesData] = await Promise.all([
             $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects').catch(() => ({ success: false, projects: [] })),
             $fetch<{ success: boolean, events: any[] }>('/api/bigquery/events').catch(() => ({ success: false, events: [] })),
             $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
             $fetch<{ success: boolean, customers: any[] }>('/api/bigquery/customers').catch(() => ({ success: false, customers: [] })),
             $fetch<{ success: boolean, notes: any[] }>('/api/bigquery/notes').catch(() => ({ success: false, notes: [] })),
             $fetch<{ success: boolean, permits: any[] }>('/api/bigquery/permits').catch(() => ({ success: false, permits: [] })),
+            $fetch<{ success: boolean, documentRequests: any[] }>('/api/bigquery/document-requests').catch(() => ({ success: false, documentRequests: [] })),
             $fetch<{ success: boolean, finance: any[] }>('/api/bigquery/project-finance').catch(() => ({ success: false, finance: [] })),
             $fetch<{ success: boolean, tasks: any[] }>('/api/bigquery/tasks').catch(() => ({ success: false, tasks: [] })),
             $fetch<{ success: boolean, payments: any[] }>('/api/bigquery/payments').catch(() => ({ success: false, payments: [] })),
@@ -89,6 +91,7 @@ async function _fetchAll() {
         if (custData.success) _customers.value = custData.customers
         if (notesData.success) _notes.value = notesData.notes
         if (permitsData.success) _permits.value = permitsData.permits
+        if (docReqData.success) _documentRequests.value = docReqData.documentRequests
         if (finData.success) _finance.value = finData.finance
         if (tasksData.success) _tasks.value = tasksData.tasks
         if (paymentsData.success) _payments.value = paymentsData.payments
@@ -165,6 +168,7 @@ export function useDashboardStore() {
         customers: readonly(_customers),
         notes: readonly(_notes),
         permits: readonly(_permits),
+        documentRequests: readonly(_documentRequests),
         finance: readonly(_finance),
         tasks: readonly(_tasks),
         payments: readonly(_payments),

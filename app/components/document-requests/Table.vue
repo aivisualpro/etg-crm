@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * Reusable Permits Table component.
- * Works in both full-page mode (/permits) and compact card mode (project detail).
+ * Reusable Document Requests Table component.
+ * Works in both full-page mode (/document-requests) and compact card mode (project detail).
+ * Schema mirrors the Permits table (same BigQuery field names).
  */
 const props = withDefaults(defineProps<{
   records: readonly any[]
@@ -24,23 +25,22 @@ const props = withDefaults(defineProps<{
   searchQuery: '',
 })
 
-// ─── Permit type filter ─────────────────────────────────────
-const permitTypeFilter = ref('')
-const permitTypes = computed(() => {
+// ─── Type filter ─────────────────────────────────────────────
+const typeFilter = ref('')
+const docTypes = computed(() => {
   const set = new Set<string>()
   props.records.forEach(r => {
-    const t = r['Permit']  // actual field name
+    const t = r['Permit']  // same field name as permits schema
     if (t) set.add(t)
   })
   return Array.from(set).sort()
 })
 
-// ─── Search & Sort ──────────────────────────────────────────
+// ─── Search & Sort ───────────────────────────────────────────
 const search = ref('')
 const sortKey = ref('_ts')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
-// Dynamic timestamp key resolver
 function getTs(rec: any): any {
   return rec['Last Edit TimeStamp'] || rec['Requested'] || ''
 }
@@ -50,7 +50,7 @@ function toggleSort(key: string) {
   else { sortKey.value = key; sortDir.value = 'desc' }
 }
 
-// ─── Helpers ────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────
 function resolveName(email: string): string {
   if (!email) return '—'
   return props.userNameMap[email.toLowerCase()] || email
@@ -91,35 +91,33 @@ function statusColor(status: string): string {
   return 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
 }
 
-// ─── Columns ────────────────────────────────────────────────
+// ─── Columns ─────────────────────────────────────────────────
 const columns = computed(() => {
   const cols = [
     ...(props.showProject
-      ? [{ key: 'Project ID',        label: 'Project',     sortable: true }]
+      ? [{ key: 'Project ID',     label: 'Project',      sortable: true }]
       : []),
-    { key: 'Permit',               label: 'Type',         sortable: true },
-    { key: 'Status',               label: 'Status',       sortable: true },
-    { key: 'Requested',            label: 'Requested',    sortable: true },
-    { key: 'Submitted',            label: 'Submitted',    sortable: true },
-    { key: 'Received',             label: 'Received',     sortable: true },
-    { key: 'Revision',             label: 'Rev',          sortable: true },
-    { key: 'Last Edit By',         label: 'Last Edit By', sortable: true },
+    { key: 'Permit',             label: 'Type',          sortable: true },
+    { key: 'Status',             label: 'Status',        sortable: true },
+    { key: 'Requested',          label: 'Requested',     sortable: true },
+    { key: 'Submitted',          label: 'Submitted',     sortable: true },
+    { key: 'Received',           label: 'Received',      sortable: true },
+    { key: 'Revision',           label: 'Rev',           sortable: true },
+    { key: 'Last Edit By',       label: 'Last Edit By',  sortable: true },
   ]
   return cols
 })
 
-// ─── Filter, Sort, Paginate ─────────────────────────────────
+// ─── Filter, Sort, Paginate ──────────────────────────────────
 const effectiveSearch = computed(() => props.searchQuery || search.value)
 
 const filtered = computed(() => {
   let rows = [...props.records]
 
-  // Permit type filter
-  if (permitTypeFilter.value) {
-    rows = rows.filter(r => r['Permit'] === permitTypeFilter.value)
+  if (typeFilter.value) {
+    rows = rows.filter(r => r['Permit'] === typeFilter.value)
   }
 
-  // Text search
   if (effectiveSearch.value.trim()) {
     const q = effectiveSearch.value.toLowerCase()
     rows = rows.filter(r =>
@@ -128,8 +126,7 @@ const filtered = computed(() => {
       || (r['Permit'] || '').toLowerCase().includes(q)
       || (r['Status'] || '').toLowerCase().includes(q)
       || (r['Last Edit By'] || '').toLowerCase().includes(q)
-      || (resolveName(r['Last Edit By']) || '').toLowerCase().includes(q)
-      || (r._source || '').toLowerCase().includes(q),
+      || (resolveName(r['Last Edit By']) || '').toLowerCase().includes(q),
     )
   }
 
@@ -153,37 +150,29 @@ const sorted = computed(() => {
   })
 })
 
-// ─── Infinite scroll ────────────────────────────────────────
+// ─── Infinite scroll ─────────────────────────────────────────
 const visibleCount = ref(props.perPage)
 const visible = computed(() => sorted.value.slice(0, visibleCount.value))
 const hasMore = computed(() => visibleCount.value < sorted.value.length)
 
 function loadMore() {
-  if (hasMore.value) {
-    visibleCount.value += props.perPage
-  }
+  if (hasMore.value) visibleCount.value += props.perPage
 }
 
-// Reset on search/filter change
 watch(() => effectiveSearch.value, () => { visibleCount.value = props.perPage })
-watch(() => permitTypeFilter.value, () => { visibleCount.value = props.perPage })
+watch(() => typeFilter.value, () => { visibleCount.value = props.perPage })
 watch(() => props.records, () => { visibleCount.value = props.perPage })
 
-// IntersectionObserver for auto-loading
 const sentinelRef = ref<HTMLElement | null>(null)
 let _observer: IntersectionObserver | null = null
 
 onMounted(() => {
   _observer = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting && hasMore.value) {
-      loadMore()
-    }
+    if (entries[0]?.isIntersecting && hasMore.value) loadMore()
   }, { rootMargin: '200px' })
 })
 
-onUnmounted(() => {
-  _observer?.disconnect()
-})
+onUnmounted(() => { _observer?.disconnect() })
 
 watch(sentinelRef, (el) => {
   _observer?.disconnect()
@@ -192,7 +181,7 @@ watch(sentinelRef, (el) => {
 </script>
 
 <template>
-  <div class="permits-table-wrap" :class="{ 'permits-table-compact': compact }">
+  <div class="doc-req-table-wrap" :class="{ 'doc-req-table-compact': compact }">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
       <Icon name="i-lucide-loader-2" class="size-6 animate-spin text-primary" />
@@ -201,60 +190,48 @@ watch(sentinelRef, (el) => {
     <!-- Empty -->
     <div v-else-if="records.length === 0" class="flex flex-col items-center justify-center py-12 text-center">
       <div class="size-12 rounded-xl bg-muted/40 flex items-center justify-center mb-3">
-        <Icon name="i-lucide-clipboard-check" class="size-6 text-muted-foreground/25" />
+        <Icon name="i-lucide-file-search" class="size-6 text-muted-foreground/25" />
       </div>
-      <p class="text-xs text-muted-foreground/60">No permits found</p>
+      <p class="text-xs text-muted-foreground/60">No document requests found</p>
     </div>
 
     <!-- Table -->
     <div v-else class="flex flex-col h-full">
-      <!-- Toolbar: filters -->
-      <div v-if="!compact && permitTypes.length > 1" class="flex items-center gap-2 px-3 pb-2 shrink-0 flex-wrap">
+      <!-- Type filter chips (full-page mode) -->
+      <div v-if="!compact && docTypes.length > 1" class="flex items-center gap-2 px-3 pb-2 shrink-0 flex-wrap">
         <button
           class="px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all"
-          :class="!permitTypeFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
-          @click="permitTypeFilter = ''"
+          :class="!typeFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
+          @click="typeFilter = ''"
         >
           All
         </button>
         <button
-          v-for="pt in permitTypes"
-          :key="pt"
+          v-for="dt in docTypes"
+          :key="dt"
           class="px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all"
-          :class="permitTypeFilter === pt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
-          @click="permitTypeFilter = pt"
+          :class="typeFilter === dt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
+          @click="typeFilter = dt"
         >
-          {{ pt }}
+          {{ dt }}
         </button>
       </div>
 
-      <!-- Compact mode: inline filter + search -->
-      <div v-if="compact && (permitTypes.length > 1 || (!hideSearch && records.length > 1))" class="px-1 pb-2 shrink-0 space-y-1.5">
-        <div v-if="permitTypes.length > 1" class="flex items-center gap-1 flex-wrap">
+      <!-- Compact mode: inline filter -->
+      <div v-if="compact && docTypes.length > 1" class="px-1 pb-2 shrink-0">
+        <div class="flex items-center gap-1 flex-wrap">
           <button
             class="px-2 py-0.5 rounded text-[9px] font-medium border transition-all"
-            :class="!permitTypeFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
-            @click="permitTypeFilter = ''"
-          >
-            All
-          </button>
+            :class="!typeFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
+            @click="typeFilter = ''"
+          >All</button>
           <button
-            v-for="pt in permitTypes"
-            :key="pt"
+            v-for="dt in docTypes"
+            :key="dt"
             class="px-2 py-0.5 rounded text-[9px] font-medium border transition-all"
-            :class="permitTypeFilter === pt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
-            @click="permitTypeFilter = pt"
-          >
-            {{ pt }}
-          </button>
-        </div>
-        <div v-if="!hideSearch && records.length > 1" class="relative">
-          <Icon name="i-lucide-search" class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" />
-          <input
-            v-model="search"
-            placeholder="Search…"
-            class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all"
-          />
+            :class="typeFilter === dt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60'"
+            @click="typeFilter = dt"
+          >{{ dt }}</button>
         </div>
       </div>
 
@@ -287,7 +264,7 @@ watch(sentinelRef, (el) => {
           <tbody>
             <tr
               v-for="(rec, idx) in visible"
-              :key="rec['Permit ID'] || idx"
+              :key="rec['Row ID'] || idx"
               class="border-b border-border/20 hover:bg-muted/15 transition-colors"
             >
               <td
@@ -310,7 +287,7 @@ watch(sentinelRef, (el) => {
                   <span v-else class="text-muted-foreground/40">—</span>
                 </template>
 
-                <!-- Permit Type badge -->
+                <!-- Type badge -->
                 <template v-else-if="col.key === 'Permit'">
                   <Badge v-if="rec['Permit']" variant="secondary" class="text-[10px]">
                     {{ rec['Permit'] }}
@@ -327,7 +304,7 @@ watch(sentinelRef, (el) => {
                 </template>
 
                 <!-- Date columns -->
-                <template v-else-if="['Requested','Submitted','Received','Last Edit TimeStamp'].includes(col.key)">
+                <template v-else-if="['Requested', 'Submitted', 'Received'].includes(col.key)">
                   <span class="tabular-nums text-muted-foreground">
                     {{ formatDate(rec[col.key]) }}
                   </span>
@@ -352,7 +329,7 @@ watch(sentinelRef, (el) => {
             <tr v-if="visible.length === 0">
               <td :colspan="columns.length" class="text-center py-8 text-muted-foreground">
                 <Icon name="i-lucide-search-x" class="size-6 mx-auto mb-1.5 text-muted-foreground/15" />
-                <p class="text-xs">No matching permits</p>
+                <p class="text-xs">No matching document requests</p>
               </td>
             </tr>
           </tbody>
@@ -364,13 +341,12 @@ watch(sentinelRef, (el) => {
           <span class="text-[10px] text-muted-foreground/40 ml-2">Loading more…</span>
         </div>
       </div>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-.permits-table-wrap {
+.doc-req-table-wrap {
   height: 100%;
   display: flex;
   flex-direction: column;

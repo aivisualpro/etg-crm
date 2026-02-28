@@ -139,32 +139,40 @@ function statusColor(status: string): string {
   return 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
 }
 
+// ─── Title Case Helper ───────────────────────────────────────
+// Capitalizes first letter of every word, including after hyphens
+function toTitleCase(val: string | undefined | null): string {
+  if (!val) return val ?? ''
+  return String(val).toLowerCase().replace(/(?:^|[\s-])\w/g, c => c.toUpperCase())
+}
+
 // ─── Project Info Fields ────────────────────────────────────
 const projectInfoFields = computed(() => {
   if (!project.value) return []
   const p = project.value
   return [
-    { label: 'Customer Name', value: p['Customer name'] },
-    { label: 'Customer Email', value: p['Customer Email'] },
-    { label: 'Customer Phone', value: p['Customer Phone'] },
-    { label: 'Branch Name', value: p['Branch Name'] },
-    { label: 'Vendor', value: p['Vendor Name'] },
-    { label: 'Project Type', value: p['Project Type'] },
-    { label: 'Project Manager', value: resolveName(p['Project Manager']) },
-    { label: 'Project Manager VA', value: resolveName(p['Project Manager VA']) },
-    { label: 'Finance Manager', value: resolveName(p['Finance Manager']) },
-    { label: 'Finance Manager VA', value: resolveName(p['Finance Manager VA']) },
-    { label: 'Engineer', value: resolveName(p.Engineer) },
-    { label: 'Permit Coordinator', value: resolveName(p['Permit Coordinator']) },
-    { label: 'Sales Rep', value: resolveSalesRep(p['Sales Rep']) },
-    { label: 'Fire Approval', value: p['Fire Approval Needed'] },
-    { label: 'Permits Status', value: p['PTO Status'] },
-    { label: 'Contract Sign', value: formatDate(p['Project Start']) },
-    { label: 'Project Price', value: formatCurrency(p['Project Price']) },
-    { label: 'Project Fees', value: formatCurrency(p['Contract Price']) },
+    { label: 'Customer Name',      value: toTitleCase(p['Customer name']) },
+    { label: 'Customer Email',     value: p['Customer Email'] },
+    { label: 'Customer Phone',     value: p['Customer Phone'] },
+    { label: 'Branch Name',        value: toTitleCase(p['Branch Name']) },
+    { label: 'Vendor',             value: toTitleCase(p['Vendor Name']) },
+    { label: 'Project Type',       value: toTitleCase(p['Project Type']) },
+    { label: 'Project Manager',    value: toTitleCase(resolveName(p['Project Manager'])) },
+    { label: 'Project Manager VA', value: toTitleCase(resolveName(p['Project Manager VA'])) },
+    { label: 'Finance Manager',    value: toTitleCase(resolveName(p['Finance Manager'])) },
+    { label: 'Finance Manager VA', value: toTitleCase(resolveName(p['Finance Manager VA'])) },
+    { label: 'Engineer',           value: toTitleCase(resolveName(p.Engineer)) },
+    { label: 'Permit Coordinator', value: toTitleCase(resolveName(p['Permit Coordinator'])) },
+    { label: 'Sales Rep',          value: toTitleCase(resolveSalesRep(p['Sales Rep'])) },
+    { label: 'Fire Approval',      value: toTitleCase(p['Fire Approval Needed']) },
+    { label: 'Permits Status',     value: p['PTO Status'] },
+    { label: 'Contract Sign',      value: formatDate(p['Project Start']) },
+    { label: 'Project Price',      value: formatCurrency(p['Project Price']) },
+    { label: 'Project Fees',       value: formatCurrency(p['Contract Price']) },
     { label: 'Project Net Amount', value: formatCurrency(p['Project Net Amount']) },
   ].filter(f => f.value && f.value !== '—')
 })
+
 
 // ─── Production Info Fields ─────────────────────────────────
 const productionFields = computed(() => {
@@ -305,84 +313,29 @@ function eventStatusIcon(status: string): string {
   return 'i-lucide-clock'
 }
 
-// ─── Drag & Drop Grid ──────────────────────────────────────
+// ─── Fixed Grid Card Definitions ────────────────────────────
 interface CardDef {
-  id: string; title: string; icon: string; accent: string; borderColor: string
+  id: string; title: string; icon: string; accent: string; color: string
 }
-const allCards: CardDef[] = [
-  { id: 'project-info', title: 'Project Info', icon: 'i-lucide-info', accent: 'from-blue-500 to-indigo-500', borderColor: '217 91% 60%' },
-  { id: 'production-info', title: 'Production Info', icon: 'i-lucide-cpu', accent: 'from-amber-500 to-orange-500', borderColor: '38 92% 50%' },
-  { id: 'project-finance', title: 'Project Finance', icon: 'i-lucide-banknote', accent: 'from-emerald-500 to-teal-500', borderColor: '160 84% 39%' },
-  { id: 'documents', title: 'Documents', icon: 'i-lucide-file-text', accent: 'from-violet-500 to-purple-500', borderColor: '258 90% 66%' },
-  { id: 'permits', title: 'Permits', icon: 'i-lucide-clipboard-check', accent: 'from-lime-500 to-green-500', borderColor: '142 71% 45%' },
-  { id: 'payments', title: 'Payments', icon: 'i-lucide-credit-card', accent: 'from-pink-500 to-rose-500', borderColor: '330 81% 60%' },
-  { id: 'notes', title: 'Notes', icon: 'i-lucide-sticky-note', accent: 'from-yellow-500 to-amber-500', borderColor: '45 93% 47%' },
-  { id: 'events', title: 'Events', icon: 'i-lucide-calendar-days', accent: 'from-fuchsia-500 to-pink-500', borderColor: '292 84% 61%' },
-  { id: 'chat-room', title: 'Chat Room', icon: 'i-lucide-message-circle', accent: 'from-sky-500 to-cyan-500', borderColor: '199 89% 48%' },
+// Bento: 3 rows of [25%, 25%, 50%]
+// color = CSS color used for border accent (works in both light and dark mode)
+const gridRows: [CardDef, CardDef, CardDef][] = [
+  [
+    { id: 'project-info',    title: 'Project Info',    icon: 'i-lucide-info',            accent: 'from-blue-500 to-indigo-500',   color: '#6366f1' },
+    { id: 'production-info', title: 'Production Info', icon: 'i-lucide-cpu',             accent: 'from-amber-500 to-orange-500', color: '#f59e0b' },
+    { id: 'project-finance', title: 'Project Finance', icon: 'i-lucide-banknote',        accent: 'from-emerald-500 to-teal-500', color: '#10b981' },
+  ],
+  [
+    { id: 'documents',       title: 'Documents',       icon: 'i-lucide-file-text',       accent: 'from-violet-500 to-purple-500', color: '#8b5cf6' },
+    { id: 'permits',         title: 'Permits',         icon: 'i-lucide-clipboard-check', accent: 'from-lime-500 to-green-500',   color: '#84cc16' },
+    { id: 'payments',        title: 'Payments',        icon: 'i-lucide-credit-card',     accent: 'from-pink-500 to-rose-500',   color: '#f43f5e' },
+  ],
+  [
+    { id: 'notes',           title: 'Notes',           icon: 'i-lucide-sticky-note',     accent: 'from-yellow-500 to-amber-500', color: '#eab308' },
+    { id: 'events',          title: 'Events',          icon: 'i-lucide-calendar-days',   accent: 'from-fuchsia-500 to-pink-500', color: '#d946ef' },
+    { id: 'chat-room',       title: 'Chat Room',       icon: 'i-lucide-message-circle',  accent: 'from-sky-500 to-cyan-500',    color: '#0ea5e9' },
+  ],
 ]
-
-const LAYOUT_STORAGE_KEY = 'project-detail-layout-v2'
-
-interface SavedLayout {
-  spans: Record<string, number>
-}
-
-function loadLayout(): SavedLayout {
-  try {
-    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as SavedLayout
-      if (parsed.spans) return parsed
-    }
-  }
-  catch {}
-  return { spans: {} }
-}
-
-function saveLayout() {
-  try {
-    const data: SavedLayout = { spans: cardSpans.value }
-    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(data))
-  }
-  catch {}
-}
-
-const savedLayout = loadLayout()
-const cardSpans = ref<Record<string, number>>(savedLayout.spans)
-const orderedCards = computed(() => allCards)
-
-const SPAN_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2, 3]
-function getSpan(cardId: string): number { return cardSpans.value[cardId] || 1 }
-function getSpanIndex(cardId: string): number {
-  const val = getSpan(cardId)
-  // Find closest step
-  let best = 3 // default to 1x index
-  let bestDist = Infinity
-  for (let i = 0; i < SPAN_STEPS.length; i++) {
-    const dist = Math.abs(SPAN_STEPS[i]! - val)
-    if (dist < bestDist) { bestDist = dist; best = i }
-  }
-  return best
-}
-function increaseSpan(cardId: string) {
-  const idx = getSpanIndex(cardId)
-  if (idx < SPAN_STEPS.length - 1) { cardSpans.value = { ...cardSpans.value, [cardId]: SPAN_STEPS[idx + 1]! }; saveLayout() }
-}
-function decreaseSpan(cardId: string) {
-  const idx = getSpanIndex(cardId)
-  if (idx > 0) { cardSpans.value = { ...cardSpans.value, [cardId]: SPAN_STEPS[idx - 1]! }; saveLayout() }
-}
-function spanLabel(cardId: string): string {
-  const v = getSpan(cardId)
-  if (v < 1) return `${Math.round(v * 100)}%`
-  if (v >= 1 && v < 2 && v !== 1) return `${v.toFixed(1)}x`
-  return `${v}x`
-}
-// Map span value to number of grid columns (out of 30)
-function gridColSpan(cardId: string): number {
-  const v = getSpan(cardId)
-  return Math.round(v * 10)
-}
 
 
 // ─── Global Search ──────────────────────────────────────────
@@ -505,7 +458,7 @@ function cardHasMatch(cardId: string): boolean {
       </div>
 
       <!-- Content -->
-      <div v-else-if="project" class="flex-1 min-h-0 overflow-auto">
+      <div v-else-if="project" class="flex-1 min-h-0 flex flex-col overflow-hidden">
         <!-- Sub-header Action Bar -->
         <div class="sticky top-0 z-10 border-b" style="background: linear-gradient(135deg, hsl(var(--primary) / 0.03), hsl(var(--background) / 0.9)); backdrop-filter: blur(12px); border-color: hsl(var(--primary) / 0.08);">
           <div class="flex items-center gap-1.5 px-4 py-2 overflow-x-auto scrollbar-none">
@@ -603,182 +556,172 @@ function cardHasMatch(cardId: string): boolean {
           </div>
         </div>
 
-        <div class="p-4 md:p-5">
+        <div class="flex-1 min-h-0 overflow-hidden p-2" style="zoom: 0.82;">
 
-          <!-- ═══ FIXED CARD GRID ═══ -->
+          <!-- ═══ BENTO GRID ═══ -->
           <div class="dashboard-grid">
-            <div
-              v-for="card in orderedCards"
-              :key="card.id"
-              class="dashboard-card"
-              :class="{
-                'has-search-match': cardHasMatch(card.id),
-                'no-search-match': globalSearch.trim() && !cardHasMatch(card.id),
-              }"
-              :style="{ gridColumn: `span ${gridColSpan(card.id)}`, '--card-theme': card.borderColor }"
-            >
+
+            <!-- ① Project Info — spans all 3 rows left -->
+            <div class="dashboard-card bento-proj-info" :style="{ '--card-color': '#6366f1' }" :class="{ 'has-search-match': cardHasMatch('project-info'), 'no-search-match': globalSearch.trim() && !cardHasMatch('project-info') }">
               <div class="card-inner">
-                <!-- Card Header with drag handle -->
-                <div class="card-header-bar">
-                  <div class="card-accent" :class="card.accent" />
-                  <div class="card-header-content">
-                    <div class="card-icon-wrap" :class="`bg-gradient-to-br ${card.accent}`">
-                      <Icon :name="card.icon" class="size-3.5 text-white" />
-                    </div>
-                    <h3 class="card-title">{{ card.title }}</h3>
-                    <Badge v-if="card.id === 'chat-room' && allChatMessagesSorted.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ allChatMessagesSorted.length }}</Badge>
-                    <Badge v-if="card.id === 'events' && projectEvents.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectEvents.length }}</Badge>
-                    <Badge v-if="card.id === 'notes' && projectNotes.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectNotes.length }}</Badge>
-                    <Badge v-if="card.id === 'permits' && projectPermits.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectPermits.length }}</Badge>
-                    <!-- Size controls -->
-                    <div class="size-controls">
-                      <button class="size-btn" :disabled="getSpanIndex(card.id) <= 0" title="Decrease width" @click.stop="decreaseSpan(card.id)">
-                        <Icon name="i-lucide-minus" class="size-3" />
-                      </button>
-                      <span class="size-label">{{ spanLabel(card.id) }}</span>
-                      <button class="size-btn" :disabled="getSpanIndex(card.id) >= SPAN_STEPS.length - 1" title="Increase width" @click.stop="increaseSpan(card.id)">
-                        <Icon name="i-lucide-plus" class="size-3" />
-                      </button>
+                <div class="card-header-bar"><div class="card-header-content">
+                  <div class="card-icon-wrap bg-gradient-to-br from-blue-500 to-indigo-500"><Icon name="i-lucide-info" class="size-3.5 text-white" /></div>
+                  <h3 class="card-title">Project Info</h3>
+                </div></div>
+                <div class="card-body">
+                  <div class="divide-y divide-border/40">
+                    <div v-for="field in projectInfoFields" :key="field.label" class="flex items-center justify-between py-2 px-1 hover:bg-muted/30 rounded transition-colors" :class="{ 'search-row-match': textMatches(field.label) || textMatches(field.value) }">
+                      <span class="text-xs text-muted-foreground font-medium" v-html="highlightText(field.label)" />
+                      <span class="text-xs font-semibold text-right max-w-[55%] truncate" v-html="highlightText(field.value)" />
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
 
-                <!-- Card Body -->
+            <!-- ② Production Info — row 1, col 2 -->
+            <div class="dashboard-card bento-prod-info" :style="{ '--card-color': '#f59e0b' }" :class="{ 'has-search-match': cardHasMatch('production-info'), 'no-search-match': globalSearch.trim() && !cardHasMatch('production-info') }">
+              <div class="card-inner">
+                <div class="card-header-bar"><div class="card-header-content">
+                  <div class="card-icon-wrap bg-gradient-to-br from-amber-500 to-orange-500"><Icon name="i-lucide-cpu" class="size-3.5 text-white" /></div>
+                  <h3 class="card-title">Production Info</h3>
+                </div></div>
                 <div class="card-body">
+                  <div class="divide-y divide-border/40">
+                    <div v-for="field in productionFields" :key="field.label" class="flex items-center justify-between py-2 px-1 hover:bg-muted/30 rounded transition-colors" :class="{ 'search-row-match': textMatches(field.label) || textMatches(field.value) }">
+                      <span class="text-xs text-muted-foreground font-medium" v-html="highlightText(field.label)" />
+                      <Badge v-if="field.isStatus" variant="outline" :class="statusColor(field.value)" class="text-[10px]"><span v-html="highlightText(field.value)" /></Badge>
+                      <span v-else class="text-xs font-semibold text-right max-w-[55%] truncate" v-html="highlightText(field.value)" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                  <!-- PROJECT INFO -->
-                  <template v-if="card.id === 'project-info'">
-                    <div class="divide-y divide-border/40">
-                      <div v-for="field in projectInfoFields" :key="field.label" class="flex items-center justify-between py-2 px-1 hover:bg-muted/30 rounded transition-colors" :class="{ 'search-row-match': textMatches(field.label) || textMatches(field.value) }">
-                        <span class="text-xs text-muted-foreground font-medium" v-html="highlightText(field.label)" />
-                        <span class="text-xs font-semibold text-right max-w-[55%] truncate" v-html="highlightText(field.value)" />
+            <!-- ③ Project Finance — row 1, col 3 (50%) -->
+            <div class="dashboard-card bento-proj-finance" :style="{ '--card-color': '#10b981' }" :class="{ 'has-search-match': cardHasMatch('project-finance'), 'no-search-match': globalSearch.trim() && !cardHasMatch('project-finance') }">
+              <div class="card-inner">
+                <div class="card-header-bar"><div class="card-header-content">
+                  <div class="card-icon-wrap bg-gradient-to-br from-emerald-500 to-teal-500"><Icon name="i-lucide-banknote" class="size-3.5 text-white" /></div>
+                  <h3 class="card-title">Project Finance</h3>
+                </div></div>
+                <div class="card-body">
+                  <FinancesTable :records="financeRecords" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="true" :per-page="10" :hide-search="true" :search-query="globalSearch" />
+                </div>
+              </div>
+            </div>
+
+            <!-- ④⑤ Documents + Payments — row 2, col 3 (side-by-side) -->
+            <div class="bento-docs-pay">
+
+              <!-- Documents -->
+              <div class="dashboard-card" :style="{ '--card-color': '#8b5cf6' }" :class="{ 'has-search-match': cardHasMatch('documents'), 'no-search-match': globalSearch.trim() && !cardHasMatch('documents') }">
+                <div class="card-inner">
+                  <div class="card-header-bar"><div class="card-header-content">
+                    <div class="card-icon-wrap bg-gradient-to-br from-violet-500 to-purple-500"><Icon name="i-lucide-file-text" class="size-3.5 text-white" /></div>
+                    <h3 class="card-title">Documents</h3>
+                    <Badge variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">0</Badge>
+                  </div></div>
+                  <div class="card-body flex flex-col items-center justify-center text-center">
+                    <Icon name="i-lucide-file-text" class="size-8 text-muted-foreground/15 mb-2" />
+                    <p class="text-xs text-muted-foreground/60">Coming soon</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Payments -->
+              <div class="dashboard-card" :style="{ '--card-color': '#f43f5e' }" :class="{ 'has-search-match': cardHasMatch('payments'), 'no-search-match': globalSearch.trim() && !cardHasMatch('payments') }">
+                <div class="card-inner">
+                  <div class="card-header-bar"><div class="card-header-content">
+                    <div class="card-icon-wrap bg-gradient-to-br from-pink-500 to-rose-500"><Icon name="i-lucide-credit-card" class="size-3.5 text-white" /></div>
+                    <h3 class="card-title">Payments</h3>
+                  </div></div>
+                  <div class="card-body">
+                    <PaymentsTable :records="projectPayments" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="true" :per-page="10" :hide-search="true" :search-query="globalSearch" />
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /bento-docs-pay -->
+
+            <!-- ⑥ Events — row 3, col 2 -->
+            <div class="dashboard-card bento-events" :style="{ '--card-color': '#d946ef' }" :class="{ 'has-search-match': cardHasMatch('events'), 'no-search-match': globalSearch.trim() && !cardHasMatch('events') }">
+              <div class="card-inner">
+                <div class="card-header-bar"><div class="card-header-content">
+                  <div class="card-icon-wrap bg-gradient-to-br from-fuchsia-500 to-pink-500"><Icon name="i-lucide-calendar-days" class="size-3.5 text-white" /></div>
+                  <h3 class="card-title">Events</h3>
+                  <Badge v-if="projectEvents.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectEvents.length }}</Badge>
+                </div></div>
+                <div class="card-body">
+                  <div v-if="projectEvents.length === 0" class="flex flex-col items-center justify-center py-10 text-center">
+                    <Icon name="i-lucide-calendar-days" class="size-9 text-muted-foreground/15 mb-2" />
+                    <p class="text-xs text-muted-foreground/60">No events found</p>
+                  </div>
+                  <div v-else class="space-y-2">
+                    <div v-for="evt in projectEvents" :key="evt['Event  ID']" class="p-2.5 rounded-lg border transition-all" :class="textMatches(evt['Event Type']) || textMatches(evt['Event Description']) || textMatches(evt['Event Status']) ? 'bg-primary/5 border-primary/20' : 'hover:bg-muted/30'">
+                      <div class="flex items-start gap-2">
+                        <div class="size-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" :class="statusColor(evt['Event Status'])">
+                          <Icon :name="eventStatusIcon(evt['Event Status'])" class="size-3.5" />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                          <p class="text-xs font-semibold truncate" v-html="highlightText(evt['Event Type'] || 'Event')" />
+                          <p v-if="evt['Event Description']" class="text-[10px] text-muted-foreground line-clamp-2 mt-0.5" v-html="highlightText(evt['Event Description'])" />
+                          <div class="flex items-center gap-2 mt-1 flex-wrap">
+                            <Badge v-if="evt['Event Status']" variant="outline" :class="statusColor(evt['Event Status'])" class="text-[9px]"><span v-html="highlightText(evt['Event Status'])" /></Badge>
+                            <span v-if="evt['Start Date']" class="text-[9px] text-muted-foreground flex items-center gap-0.5"><Icon name="i-lucide-calendar" class="size-2.5" /> {{ formatDate(evt['Start Date']) }}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </template>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                  <!-- PRODUCTION INFO -->
-                  <template v-else-if="card.id === 'production-info'">
-                    <div class="divide-y divide-border/40">
-                      <div v-for="field in productionFields" :key="field.label" class="flex items-center justify-between py-2 px-1 hover:bg-muted/30 rounded transition-colors" :class="{ 'search-row-match': textMatches(field.label) || textMatches(field.value) }">
-                        <span class="text-xs text-muted-foreground font-medium" v-html="highlightText(field.label)" />
-                        <Badge v-if="field.isStatus" variant="outline" :class="statusColor(field.value)" class="text-[10px]"><span v-html="highlightText(field.value)" /></Badge>
-                        <span v-else class="text-xs font-semibold text-right max-w-[55%] truncate" v-html="highlightText(field.value)" />
-                      </div>
-                    </div>
-                  </template>
+            <!-- ⑦ Bottom row — row 3, col 3 (50%) — Chat Room + Permits + Notes as sub-grid -->
+            <div class="bento-bottom-row">
 
-                  <!-- PERMITS -->
-                  <template v-else-if="card.id === 'permits'">
-                    <PermitsTable
-                      :records="projectPermits"
-                      :loading="false"
-                      :user-name-map="userNameMap"
-                      :show-project="false"
-                      :compact="true"
-                      :per-page="10"
-                      :hide-search="true"
-                      :search-query="globalSearch"
-                    />
-                  </template>
-
-                  <!-- DOCUMENTS (placeholder) -->
-                  <template v-else-if="card.id === 'documents'">
-                    <div class="flex flex-col items-center justify-center py-10 text-center">
-                      <Icon :name="card.icon" class="size-9 text-muted-foreground/15 mb-2" />
-                      <p class="text-xs text-muted-foreground/60">Coming soon</p>
-                    </div>
-                  </template>
-
-                  <!-- PAYMENTS -->
-                  <template v-else-if="card.id === 'payments'">
-                    <PaymentsTable
-                      :records="projectPayments"
-                      :loading="false"
-                      :user-name-map="userNameMap"
-                      :show-project="false"
-                      :compact="true"
-                      :per-page="10"
-                      :hide-search="true"
-                      :search-query="globalSearch"
-                    />
-                  </template>
-
-                  <!-- PROJECT FINANCE -->
-                  <template v-else-if="card.id === 'project-finance'">
-                    <FinancesTable
-                      :records="financeRecords"
-                      :loading="false"
-                      :user-name-map="userNameMap"
-                      :show-project="false"
-                      :compact="true"
-                      :per-page="10"
-                      :hide-search="true"
-                      :search-query="globalSearch"
-                    />
-                  </template>
-
-                  <!-- CHAT ROOM -->
-                  <template v-else-if="card.id === 'chat-room'">
+              <!-- Chat Room -->
+              <div class="dashboard-card" :style="{ '--card-color': '#0ea5e9' }" :class="{ 'has-search-match': cardHasMatch('chat-room'), 'no-search-match': globalSearch.trim() && !cardHasMatch('chat-room') }">
+                <div class="card-inner">
+                  <div class="card-header-bar"><div class="card-header-content">
+                    <div class="card-icon-wrap bg-gradient-to-br from-sky-500 to-cyan-500"><Icon name="i-lucide-message-circle" class="size-3.5 text-white" /></div>
+                    <h3 class="card-title">Chat Room</h3>
+                    <Badge v-if="allChatMessagesSorted.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ allChatMessagesSorted.length }}</Badge>
+                  </div></div>
+                  <div class="card-body" style="padding:0; display:flex; flex-direction:column;">
                     <div v-if="chatLoading" class="flex items-center justify-center py-10"><Icon name="i-lucide-loader-2" class="size-5 animate-spin text-primary" /></div>
                     <div v-else-if="allChatMessagesSorted.length === 0" class="flex flex-col items-center justify-center py-10 text-center">
                       <Icon name="i-lucide-message-circle" class="size-9 text-muted-foreground/15 mb-2" />
                       <p class="text-xs text-muted-foreground/60">No chat messages</p>
                     </div>
-                    <div v-else class="flex flex-col h-full min-h-[320px]">
-                      <!-- People filter -->
+                    <div v-else class="flex flex-col flex-1 min-h-0">
                       <div v-if="chatCardPeople.length > 0" class="px-3 py-2 border-b border-border/30 flex items-center justify-between gap-2">
                         <span class="text-[10px] text-muted-foreground">{{ filteredChatMessages.length }} messages</span>
-                        <select
-                          v-model="chatPersonFilter"
-                          class="h-7 px-2 pr-6 rounded-md border border-border/40 bg-muted/40 text-[10px] text-foreground outline-none focus:ring-1 focus:ring-primary/30 transition-all appearance-none cursor-pointer max-w-[150px] truncate"
-                          style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%2710%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%239ca3af%27 stroke-width=%272%27%3E%3Cpath d=%27m6 9 6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 4px center;"
-                        >
+                        <select v-model="chatPersonFilter" class="h-7 px-2 pr-6 rounded-md border border-border/40 bg-muted/40 text-[10px] text-foreground outline-none focus:ring-1 focus:ring-primary/30 transition-all appearance-none cursor-pointer max-w-[150px] truncate" style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%2710%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%239ca3af%27 stroke-width=%272%27%3E%3Cpath d=%27m6 9 6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 4px center;">
                           <option value="">All People</option>
                           <option v-for="email in chatCardPeople" :key="email" :value="email">{{ resolveName(email) }}</option>
                         </select>
                       </div>
-
-                      <!-- Messages -->
-                      <div ref="chatCardAreaRef" class="flex-1 overflow-y-auto px-3 py-3 space-y-1 chat-card-scroll">
+                      <div ref="chatCardAreaRef" class="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-1 chat-card-scroll">
                         <template v-for="(msg, idx) in filteredChatMessages" :key="msg.MessageID || idx">
-                          <!-- Date separator -->
                           <div v-if="chatShowDateSep(filteredChatMessages, idx)" class="flex justify-center py-2">
                             <span class="px-2 py-0.5 text-[8px] font-semibold text-muted-foreground bg-muted/60 rounded-full uppercase tracking-wider">{{ chatFormatDate(msg._date) }}</span>
                           </div>
-
-                          <!-- Bubble -->
-                          <div
-                            class="flex items-end gap-1.5"
-                            :class="isChatCurrentUser(msg.Email) ? 'justify-end' : 'justify-start'"
-                          >
-                            <!-- Avatar (left, for other users) -->
+                          <div class="flex items-end gap-1.5" :class="isChatCurrentUser(msg.Email) ? 'justify-end' : 'justify-start'">
                             <template v-if="!isChatCurrentUser(msg.Email)">
-                              <Avatar
-                                v-if="idx === 0 || filteredChatMessages[idx - 1]?.Email !== msg.Email || isChatCurrentUser(filteredChatMessages[idx - 1]?.Email)"
-                                class="size-5 shrink-0 mb-0.5"
-                              >
+                              <Avatar v-if="idx === 0 || filteredChatMessages[idx - 1]?.Email !== msg.Email || isChatCurrentUser(filteredChatMessages[idx - 1]?.Email)" class="size-5 shrink-0 mb-0.5">
                                 <AvatarFallback :class="chatColors[Math.abs([...msg.Email||''].reduce((h,c)=>c.charCodeAt(0)+((h<<5)-h),0)) % chatColors.length]" class="text-[6px] font-bold text-white">
                                   {{ (resolveName(msg.Email)).split(/[\s@]/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2) }}
                                 </AvatarFallback>
                               </Avatar>
                               <div v-else class="w-5 shrink-0" />
                             </template>
-
                             <div class="max-w-[75%]">
-                              <!-- Sender label -->
-                              <div
-                                v-if="!isChatCurrentUser(msg.Email) && (idx === 0 || filteredChatMessages[idx - 1]?.Email !== msg.Email || isChatCurrentUser(filteredChatMessages[idx - 1]?.Email))"
-                                class="pl-0.5 pb-0.5"
-                              >
+                              <div v-if="!isChatCurrentUser(msg.Email) && (idx === 0 || filteredChatMessages[idx - 1]?.Email !== msg.Email || isChatCurrentUser(filteredChatMessages[idx - 1]?.Email))" class="pl-0.5 pb-0.5">
                                 <span class="text-[9px] font-semibold" v-html="highlightText(resolveName(msg.Email))" />
                               </div>
-
-                              <div
-                                class="rounded-xl px-2.5 py-1.5 text-[11px] leading-relaxed shadow-sm"
-                                :class="isChatCurrentUser(msg.Email)
-                                  ? 'bg-primary text-primary-foreground rounded-br-sm'
-                                  : 'bg-muted/70 border border-border/30 text-foreground rounded-bl-sm'"
-                              >
+                              <div class="rounded-xl px-2.5 py-1.5 text-[11px] leading-relaxed shadow-sm" :class="isChatCurrentUser(msg.Email) ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-muted/70 border border-border/30 text-foreground rounded-bl-sm'">
                                 <span v-if="msg.Chat" v-html="highlightText(msg.Chat)" />
                                 <div class="flex justify-end mt-0.5 -mb-0.5">
                                   <span class="text-[7px]" :class="isChatCurrentUser(msg.Email) ? 'text-primary-foreground/50' : 'text-muted-foreground/50'">{{ chatFormatTime(msg._date) }}</span>
@@ -788,19 +731,9 @@ function cardHasMatch(cardId: string): boolean {
                           </div>
                         </template>
                       </div>
-
-                      <!-- Compose -->
                       <div class="px-3 py-2 border-t border-border/30">
                         <div class="flex items-end gap-1.5">
-                          <textarea
-                            v-model="chatCardMessage"
-                            placeholder="Type a message…"
-                            rows="1"
-                            class="flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50"
-                            style="max-height: 80px; min-height: 32px;"
-                            @keydown.enter.exact.prevent="chatCardSend"
-                            @input="(e: Event) => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 80) + 'px' }"
-                          />
+                          <textarea v-model="chatCardMessage" placeholder="Type a message…" rows="1" class="flex-1 resize-none rounded-lg border border-border/40 bg-muted/30 px-3 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-primary/30 transition-all placeholder:text-muted-foreground/50" style="max-height: 80px; min-height: 32px;" @keydown.enter.exact.prevent="chatCardSend" @input="(e: Event) => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 80) + 'px' }" />
                           <Button size="icon" class="size-8 rounded-lg shrink-0" :disabled="!chatCardMessage.trim() || chatCardSending" @click="chatCardSend">
                             <Icon v-if="chatCardSending" name="i-lucide-loader-2" class="size-3.5 animate-spin" />
                             <Icon v-else name="i-lucide-send" class="size-3.5" />
@@ -808,52 +741,41 @@ function cardHasMatch(cardId: string): boolean {
                         </div>
                       </div>
                     </div>
-                  </template>
-
-                  <!-- NOTES -->
-                  <template v-else-if="card.id === 'notes'">
-                    <NotesTable
-                      :records="projectNotes"
-                      :loading="false"
-                      :user-name-map="userNameMap"
-                      :customer-map="customerNameMap"
-                      :show-project="false"
-                      :compact="true"
-                      :per-page="10"
-                      :hide-search="true"
-                      :search-query="globalSearch"
-                    />
-                  </template>
-
-                  <!-- EVENTS -->
-                  <template v-else-if="card.id === 'events'">
-                    <div v-if="false" class="flex items-center justify-center py-10"><Icon name="i-lucide-loader-2" class="size-5 animate-spin text-primary" /></div>
-                    <div v-else-if="projectEvents.length === 0" class="flex flex-col items-center justify-center py-10 text-center">
-                      <Icon name="i-lucide-calendar-days" class="size-9 text-muted-foreground/15 mb-2" />
-                      <p class="text-xs text-muted-foreground/60">No events found</p>
-                    </div>
-                    <div v-else class="space-y-2">
-                      <div v-for="evt in projectEvents" :key="evt['Event  ID']" class="p-2.5 rounded-lg border transition-all" :class="textMatches(evt['Event Type']) || textMatches(evt['Event Description']) || textMatches(evt['Event Status']) ? 'bg-primary/5 border-primary/20' : 'hover:bg-muted/30'">
-                        <div class="flex items-start gap-2">
-                          <div class="size-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" :class="statusColor(evt['Event Status'])">
-                            <Icon :name="eventStatusIcon(evt['Event Status'])" class="size-3.5" />
-                          </div>
-                          <div class="min-w-0 flex-1">
-                            <p class="text-xs font-semibold truncate" v-html="highlightText(evt['Event Type'] || 'Event')" />
-                            <p v-if="evt['Event Description']" class="text-[10px] text-muted-foreground line-clamp-2 mt-0.5" v-html="highlightText(evt['Event Description'])" />
-                            <div class="flex items-center gap-2 mt-1 flex-wrap">
-                              <Badge v-if="evt['Event Status']" variant="outline" :class="statusColor(evt['Event Status'])" class="text-[9px]"><span v-html="highlightText(evt['Event Status'])" /></Badge>
-                              <span v-if="evt['Start Date']" class="text-[9px] text-muted-foreground flex items-center gap-0.5"><Icon name="i-lucide-calendar" class="size-2.5" /> {{ formatDate(evt['Start Date']) }}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </template>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+
+              <!-- Permits -->
+              <div class="dashboard-card" :style="{ '--card-color': '#84cc16' }" :class="{ 'has-search-match': cardHasMatch('permits'), 'no-search-match': globalSearch.trim() && !cardHasMatch('permits') }">
+                <div class="card-inner">
+                  <div class="card-header-bar"><div class="card-header-content">
+                    <div class="card-icon-wrap bg-gradient-to-br from-lime-500 to-green-500"><Icon name="i-lucide-clipboard-check" class="size-3.5 text-white" /></div>
+                    <h3 class="card-title">Permits</h3>
+                    <Badge v-if="projectPermits.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectPermits.length }}</Badge>
+                  </div></div>
+                  <div class="card-body">
+                    <PermitsTable :records="projectPermits" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="true" :per-page="10" :hide-search="true" :search-query="globalSearch" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Notes -->
+              <div class="dashboard-card" :style="{ '--card-color': '#eab308' }" :class="{ 'has-search-match': cardHasMatch('notes'), 'no-search-match': globalSearch.trim() && !cardHasMatch('notes') }">
+                <div class="card-inner">
+                  <div class="card-header-bar"><div class="card-header-content">
+                    <div class="card-icon-wrap bg-gradient-to-br from-yellow-500 to-amber-500"><Icon name="i-lucide-sticky-note" class="size-3.5 text-white" /></div>
+                    <h3 class="card-title">Notes</h3>
+                    <Badge v-if="projectNotes.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectNotes.length }}</Badge>
+                  </div></div>
+                  <div class="card-body">
+                    <NotesTable :records="projectNotes" :loading="false" :user-name-map="userNameMap" :customer-map="customerNameMap" :show-project="false" :compact="true" :per-page="10" :hide-search="true" :search-query="globalSearch" />
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /bento-bottom-row -->
+
+          </div><!-- /dashboard-grid -->
 
         </div>
       </div>
@@ -873,94 +795,108 @@ function cardHasMatch(cardId: string): boolean {
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ─── Dashboard Grid (30-column micro-grid) ─────────────── */
+/* ─── Bento Grid — viewport locked ───────────────────────── */
+/*
+  Columns: 1fr | 1fr | 2fr  →  25% | 25% | 50%
+  Project Info spans all 3 rows on the far left.
+  Bottom-right uses a nested sub-grid for Chat/Permits/Notes.
+*/
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(30, 1fr);
-  grid-auto-flow: dense;
-  gap: 16px;
-}
-@media (max-width: 700px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-  .dashboard-card {
-    grid-column: span 1 !important;
-  }
+  height: 100%;
+  grid-template-columns: 1fr 1fr 3fr;
+  grid-template-rows: 0.8fr 1fr 1fr;
+  grid-template-areas:
+    "proj-info  prod-info    proj-finance"
+    "proj-info  prod-info    docs-pay"
+    "proj-info  events       bottom-row";
+  gap: 8px;
 }
 
-/* ─── Card ───────────────────────────────────────────────── */
+.bento-proj-info    { grid-area: proj-info; }
+.bento-prod-info    { grid-area: prod-info; }
+.bento-proj-finance { grid-area: proj-finance; }
+.bento-docs-pay     { grid-area: docs-pay; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
+.bento-events       { grid-area: events; }
+.bento-bottom-row   { grid-area: bottom-row; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; min-height: 0; }
+
+/* All direct card wrappers fill their area */
+.bento-proj-info,
+.bento-prod-info,
+.bento-proj-finance,
+.bento-events {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+    grid-template-areas: none;
+    height: auto;
+  }
+  .bento-proj-info,
+  .bento-proj-finance,
+  .bento-docs-pay { grid-column: span 2; }
+  .bento-bottom-row { grid-column: span 2; }
+  .bento-docs-pay { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 600px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .bento-proj-info,
+  .bento-proj-finance,
+  .bento-docs-pay,
+  .bento-bottom-row { grid-column: 1; }
+  .bento-docs-pay { grid-template-columns: 1fr; }
+  .bento-bottom-row { grid-template-columns: 1fr; }
+}
+
+
+/* ─── Bento Card ─────────────────────────────────────────── */
 .dashboard-card {
-  --theme: var(--card-theme, 217 91% 60%);
-  border-radius: 14px;
-  border: 1px solid hsl(var(--theme) / 0.18);
-  border-left: 3px solid hsl(var(--theme) / 0.45);
-  background: linear-gradient(135deg, hsl(var(--theme) / 0.03) 0%, hsl(var(--card)) 60%);
-  box-shadow: none;
-  transition: border-color 0.3s ease, background 0.3s ease, transform 0.2s ease;
+  --card-color: hsl(var(--primary));
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--card-color) 35%, transparent);
+  background: hsl(var(--card));
+  box-shadow: 0 1px 4px hsl(var(--foreground) / 0.04);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
   overflow: hidden;
   cursor: default;
   position: relative;
   user-select: text;
   -webkit-user-select: text;
-  align-self: start;
 }
 
 .dashboard-card:hover {
-  border-color: hsl(var(--theme) / 0.35);
-  border-left-color: hsl(var(--theme) / 0.7);
-  background: linear-gradient(135deg, hsl(var(--theme) / 0.05) 0%, hsl(var(--card)) 50%);
+  border-color: color-mix(in srgb, var(--card-color) 60%, transparent);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--card-color) 14%, transparent);
+  transform: translateY(-1px);
 }
 
-/* Drag states */
-.dashboard-card.is-dragging {
-  opacity: 0.4;
-  transform: scale(0.97);
-  box-shadow: 0 0 0 2px hsl(var(--theme) / 0.3);
-}
-
-.dashboard-card.is-drag-over {
-  border-color: hsl(var(--theme) / 0.6);
-  box-shadow: 0 0 0 2px hsl(var(--theme) / 0.2);
-  transform: scale(1.01);
-}
-
-.dashboard-card.is-drag-over::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: hsl(var(--theme) / 0.04);
-  border-radius: 14px;
-  z-index: 5;
-  pointer-events: none;
-  animation: dropPulse 1s ease-in-out infinite;
-}
-
-@keyframes dropPulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.8; }
-}
 
 .card-inner {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.card-header-bar {
-  position: relative;
-  padding: 10px 14px;
-  border-bottom: 1px solid hsl(var(--theme) / 0.1);
-  flex-shrink: 0;
-  background: hsl(var(--theme) / 0.03);
-}
 
-.card-accent {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(to right, hsl(var(--theme) / 0.5), hsl(var(--theme) / 0.15));
-  border-radius: 14px 14px 0 0;
+.card-header-bar {
+  padding: 7px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--card-color) 15%, transparent);
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--card-color) 5%, hsl(var(--card)));
 }
 
 .card-header-content {
@@ -971,74 +907,35 @@ function cardHasMatch(cardId: string): boolean {
 
 
 .card-icon-wrap {
-  width: 26px; height: 26px;
-  border-radius: 7px;
+  width: 22px; height: 22px;
+  border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
 
 .card-title {
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-/* ─── Size controls ──────────────────────────────────────── */
-.size-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.dashboard-card:hover .size-controls {
-  opacity: 1;
-}
 
-.size-btn {
-  width: 20px; height: 20px;
-  border-radius: 5px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
-  color: hsl(var(--muted-foreground));
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.size-btn:hover:not(:disabled) {
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-  border-color: hsl(var(--primary) / 0.3);
-}
-.size-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
 
-.size-label {
-  font-size: 9px;
-  font-weight: 700;
-  color: hsl(var(--muted-foreground));
-  min-width: 18px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
 
 .card-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 10px 14px;
+  padding: 8px 12px;
 }
+
 
 .card-body::-webkit-scrollbar { width: 3px; }
 .card-body::-webkit-scrollbar-track { background: transparent; }
 .card-body::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.12); border-radius: 100px; }
 
 /* ─── Staggered entrance ─────────────────────────────────── */
-.dashboard-card { animation: cardIn 0.35s ease-out both; }
+.dashboard-card { animation: cardIn 0.3s ease-out both; }
 .dashboard-card:nth-child(1) { animation-delay: 0.02s; }
 .dashboard-card:nth-child(2) { animation-delay: 0.05s; }
 .dashboard-card:nth-child(3) { animation-delay: 0.08s; }
@@ -1050,9 +947,10 @@ function cardHasMatch(cardId: string): boolean {
 .dashboard-card:nth-child(9) { animation-delay: 0.26s; }
 
 @keyframes cardIn {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
+
 
 /* ─── Global Search Input ────────────────────────────────── */
 .global-search-input {
@@ -1092,16 +990,11 @@ function cardHasMatch(cardId: string): boolean {
   line-height: 1.4;
 }
 
-/* ─── Card Search Match States ───────────────────────────── */
+/* ─── Bento Search Match States ─────────────────────────── */
 .dashboard-card.has-search-match {
-  border-color: hsl(var(--theme) / 0.55);
-  border-left-color: hsl(var(--theme) / 0.8);
-  background: linear-gradient(135deg, hsl(var(--theme) / 0.08) 0%, hsl(var(--card)) 50%);
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.1), 0 4px 16px hsl(var(--primary) / 0.08);
   animation: matchPulse 2s ease-in-out infinite;
-}
-.dashboard-card.has-search-match .card-accent {
-  height: 3px;
-  background: linear-gradient(to right, hsl(var(--theme) / 0.7), hsl(var(--theme) / 0.3));
 }
 
 .dashboard-card.no-search-match {
@@ -1111,9 +1004,10 @@ function cardHasMatch(cardId: string): boolean {
 }
 
 @keyframes matchPulse {
-  0%, 100% { border-color: hsl(var(--theme) / 0.45); }
-  50% { border-color: hsl(var(--theme) / 0.65); }
+  0%, 100% { border-color: hsl(var(--primary) / 0.3); }
+  50% { border-color: hsl(var(--primary) / 0.55); }
 }
+
 
 /* ─── Row-level Match Highlight ──────────────────────────── */
 .search-row-match {

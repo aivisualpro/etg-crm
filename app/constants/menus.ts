@@ -63,12 +63,41 @@ export const navMenu: NavMenu[] = [
             title: 'My Closed Projects',
             link: '/projects/my-closed',
           },
+          {
+            title: 'My Cancelled Projects',
+            link: '/projects/my-cancelled',
+          },
+          {
+            title: 'Permit Dashboard',
+            link: '/projects/permit-dashboard',
+          },
+          {
+            title: 'Projects Dashboard',
+            link: '/projects/projects-dashboard',
+          },
+          {
+            title: 'RTF Today',
+            link: '/projects/rtf-today',
+          },
+          {
+            title: 'Engineers Dashboard',
+            link: '/projects/engineers-dashboard',
+          },
+          {
+            title: 'PTO & Meterspot Dashboard',
+            link: '/projects/pto-meterspot',
+          },
         ],
       },
       {
         title: 'Permits',
         icon: 'i-lucide-clipboard-check',
         link: '/permits',
+      },
+      {
+        title: 'Document Requests',
+        icon: 'i-lucide-file-search',
+        link: '/document-requests',
       },
       {
         title: 'Finances',
