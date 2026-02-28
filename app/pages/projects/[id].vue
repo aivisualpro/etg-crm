@@ -62,6 +62,9 @@ const projectNotes = computed(() =>
 const projectPermits = computed(() =>
   (store.permits.value || []).filter((p: any) => p['Project ID'] === projectId.value),
 )
+const projectDocuments = computed(() =>
+  (store.documentRequests.value || []).filter((d: any) => d['Project ID'] === projectId.value),
+)
 const projectPayments = computed(() =>
   (store.payments.value || []).filter((p: any) => p['Project ID'] === projectId.value),
 )
@@ -179,9 +182,9 @@ const productionFields = computed(() => {
   if (!project.value) return []
   const p = project.value
   return [
-    { label: 'Project Status', value: p['Project Status'], isStatus: true },
-    { label: 'Project Equipment', value: p['Project Equipment'] },
-    { label: 'Solar Equipment', value: p['Solar Equipment'] },
+    { label: 'Project Status',   value: p['Project Status'], isStatus: true, wrap: true, chips: true },
+    { label: 'Project Equipment', value: p['Project Equipment'], wrap: true, chips: true },
+    { label: 'Solar Equipment',   value: p['Solar Equipment'], wrap: true, chips: true },
     { label: 'Panels Amount', value: p['Panels Amount'] },
     { label: 'KW', value: p.KW },
     { label: 'Watt', value: p.Watt },
@@ -337,8 +340,41 @@ const gridRows: [CardDef, CardDef, CardDef][] = [
   ],
 ]
 
+// ─── Card Expand / Popup ─────────────────────────────────────
+const expandedCard = ref<string | null>(null)
 
-// ─── Global Search ──────────────────────────────────────────
+// Flat lookup map: cardId → full card metadata
+const cardMetaMap = Object.fromEntries(gridRows.flat().map(c => [c.id, c]))
+
+function expandCard(id: string) { expandedCard.value = id }
+function closeExpanded() { expandedCard.value = null }
+
+// Record count for the popup header badge
+const expandedCardCount = computed(() => {
+  if (!expandedCard.value) return 0
+  const map: Record<string, number> = {
+    'project-info':    projectInfoFields.value.length,
+    'production-info': productionFields.value.length,
+    'project-finance': (financeRecords.value as any[]).length,
+    'documents':       projectDocuments.value.length,
+    'payments':        projectPayments.value.length,
+    'events':          projectEvents.value.length,
+    'chat-room':       allChatMessagesSorted.value.length,
+    'permits':         projectPermits.value.length,
+    'notes':           projectNotes.value.length,
+  }
+  return map[expandedCard.value] ?? 0
+})
+
+// Close on ESC
+onMounted(() => {
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeExpanded() }
+  window.addEventListener('keydown', onKey)
+  onUnmounted(() => window.removeEventListener('keydown', onKey))
+})
+
+
+// ─── Global Search ───────────────────────────────────────────
 function highlightText(text: string): string {
   if (!globalSearch.value.trim() || !text) return text
   const q = globalSearch.value.trim()
@@ -384,7 +420,12 @@ function cardHasMatch(cardId: string): boolean {
   }
   if (cardId === 'permits') {
     return projectPermits.value.some((p: any) =>
-      textMatches(p['Permit Type']) || textMatches(p['Permit Status']) || textMatches(p['Permit Number']) || textMatches(p['Permit Note'])
+      textMatches(p['Permit']) || textMatches(p['Status']) || textMatches(p['Last Edit By'])
+    )
+  }
+  if (cardId === 'documents') {
+    return projectDocuments.value.some((d: any) =>
+      textMatches(d['Permit']) || textMatches(d['Status']) || textMatches(d['Last Edit By'])
     )
   }
   return false
@@ -407,19 +448,14 @@ function cardHasMatch(cardId: string): boolean {
             <span class="text-muted-foreground text-xs shrink-0">/</span>
             <span v-if="customerAddress" class="text-xs text-muted-foreground truncate max-w-[200px] shrink-0">{{ customerAddress }}</span>
             <span v-if="customerAddress" class="text-muted-foreground text-xs shrink-0">/</span>
-            <span class="text-xs font-mono text-primary/80 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 shrink-0">{{ project['Project ID'] }}</span>
-            <span class="text-muted-foreground text-xs shrink-0">/</span>
-            <Badge v-if="projectStatus" variant="outline" :class="statusColor(projectStatus)" class="text-[10px] shrink-0">{{ projectStatus }}</Badge>
-            <template v-for="js in jobStatuses" :key="js">
-              <Badge variant="outline" :class="statusColor(js)" class="text-[10px] shrink-0">{{ js }}</Badge>
-            </template>
+            <Badge v-if="jobStatuses.length" variant="outline" :class="statusColor(jobStatuses[0])" class="text-[10px] shrink-0">{{ jobStatuses[0] }}</Badge>
           </div>
           <!-- Global Search -->
           <div class="relative shrink-0 ml-2">
             <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 pointer-events-none" />
             <input
               v-model="globalSearch"
-              placeholder="Search cards…"
+              placeholder="Search"
               class="global-search-input"
             />
             <button
@@ -556,7 +592,7 @@ function cardHasMatch(cardId: string): boolean {
           </div>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-hidden p-2" style="zoom: 0.82;">
+        <div class="flex-1 min-h-0 overflow-hidden p-2" style="zoom: 0.9;">
 
           <!-- ═══ BENTO GRID ═══ -->
           <div class="dashboard-grid">
@@ -565,7 +601,7 @@ function cardHasMatch(cardId: string): boolean {
             <div class="dashboard-card bento-proj-info" :style="{ '--card-color': '#6366f1' }" :class="{ 'has-search-match': cardHasMatch('project-info'), 'no-search-match': globalSearch.trim() && !cardHasMatch('project-info') }">
               <div class="card-inner">
                 <div class="card-header-bar"><div class="card-header-content">
-                  <div class="card-icon-wrap bg-gradient-to-br from-blue-500 to-indigo-500"><Icon name="i-lucide-info" class="size-3.5 text-white" /></div>
+                  <div class="card-icon-wrap bg-gradient-to-br from-blue-500 to-indigo-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('project-info')"><Icon name="i-lucide-info" class="size-3.5 text-white" /></div>
                   <h3 class="card-title">Project Info</h3>
                 </div></div>
                 <div class="card-body">
@@ -583,15 +619,32 @@ function cardHasMatch(cardId: string): boolean {
             <div class="dashboard-card bento-prod-info" :style="{ '--card-color': '#f59e0b' }" :class="{ 'has-search-match': cardHasMatch('production-info'), 'no-search-match': globalSearch.trim() && !cardHasMatch('production-info') }">
               <div class="card-inner">
                 <div class="card-header-bar"><div class="card-header-content">
-                  <div class="card-icon-wrap bg-gradient-to-br from-amber-500 to-orange-500"><Icon name="i-lucide-cpu" class="size-3.5 text-white" /></div>
+                  <div class="card-icon-wrap bg-gradient-to-br from-amber-500 to-orange-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('production-info')"><Icon name="i-lucide-cpu" class="size-3.5 text-white" /></div>
                   <h3 class="card-title">Production Info</h3>
                 </div></div>
                 <div class="card-body">
                   <div class="divide-y divide-border/40">
-                    <div v-for="field in productionFields" :key="field.label" class="flex items-center justify-between py-2 px-1 hover:bg-muted/30 rounded transition-colors" :class="{ 'search-row-match': textMatches(field.label) || textMatches(field.value) }">
+                    <div v-for="field in productionFields" :key="field.label"
+                      class="py-2 px-1 hover:bg-muted/30 rounded transition-colors"
+                      :class="[field.wrap ? 'flex flex-col gap-1' : 'flex items-center justify-between', { 'search-row-match': textMatches(field.label) || textMatches(field.value) }]"
+                    >
                       <span class="text-xs text-muted-foreground font-medium" v-html="highlightText(field.label)" />
-                      <Badge v-if="field.isStatus" variant="outline" :class="statusColor(field.value)" class="text-[10px]"><span v-html="highlightText(field.value)" /></Badge>
-                      <span v-else class="text-xs font-semibold text-right max-w-[55%] truncate" v-html="highlightText(field.value)" />
+                      <!-- Chips mode: split by comma -->
+                      <div v-if="field.chips" class="flex flex-wrap gap-1">
+                        <Badge
+                          v-for="chip in field.value.split(',').map((s: string) => s.trim()).filter(Boolean)"
+                          :key="chip"
+                          variant="outline"
+                          :class="field.isStatus ? statusColor(chip) : 'bg-muted/40 text-foreground border-border/50'"
+                          class="text-[10px] px-1.5 py-0"
+                        >
+                          {{ chip }}
+                        </Badge>
+                      </div>
+                      <!-- Normal status badge -->
+                      <Badge v-else-if="field.isStatus" variant="outline" :class="statusColor(field.value)" class="text-[10px] self-start"><span v-html="highlightText(field.value)" /></Badge>
+                      <!-- Normal text -->
+                      <span v-else class="text-xs font-semibold" :class="field.wrap ? 'text-left whitespace-normal break-words' : 'text-right max-w-[55%] truncate'" v-html="highlightText(field.value)" />
                     </div>
                   </div>
                 </div>
@@ -602,7 +655,7 @@ function cardHasMatch(cardId: string): boolean {
             <div class="dashboard-card bento-proj-finance" :style="{ '--card-color': '#10b981' }" :class="{ 'has-search-match': cardHasMatch('project-finance'), 'no-search-match': globalSearch.trim() && !cardHasMatch('project-finance') }">
               <div class="card-inner">
                 <div class="card-header-bar"><div class="card-header-content">
-                  <div class="card-icon-wrap bg-gradient-to-br from-emerald-500 to-teal-500"><Icon name="i-lucide-banknote" class="size-3.5 text-white" /></div>
+                  <div class="card-icon-wrap bg-gradient-to-br from-emerald-500 to-teal-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('project-finance')"><Icon name="i-lucide-banknote" class="size-3.5 text-white" /></div>
                   <h3 class="card-title">Project Finance</h3>
                 </div></div>
                 <div class="card-body">
@@ -618,13 +671,26 @@ function cardHasMatch(cardId: string): boolean {
               <div class="dashboard-card" :style="{ '--card-color': '#8b5cf6' }" :class="{ 'has-search-match': cardHasMatch('documents'), 'no-search-match': globalSearch.trim() && !cardHasMatch('documents') }">
                 <div class="card-inner">
                   <div class="card-header-bar"><div class="card-header-content">
-                    <div class="card-icon-wrap bg-gradient-to-br from-violet-500 to-purple-500"><Icon name="i-lucide-file-text" class="size-3.5 text-white" /></div>
+                    <div class="card-icon-wrap bg-gradient-to-br from-violet-500 to-purple-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('documents')"><Icon name="i-lucide-file-text" class="size-3.5 text-white" /></div>
                     <h3 class="card-title">Documents</h3>
-                    <Badge variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">0</Badge>
+                    <Badge v-if="projectDocuments.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectDocuments.length }}</Badge>
                   </div></div>
-                  <div class="card-body flex flex-col items-center justify-center text-center">
-                    <Icon name="i-lucide-file-text" class="size-8 text-muted-foreground/15 mb-2" />
-                    <p class="text-xs text-muted-foreground/60">Coming soon</p>
+                  <div class="card-body">
+                    <div v-if="projectDocuments.length === 0" class="flex flex-col items-center justify-center py-6 text-center h-full">
+                      <Icon name="i-lucide-file-search" class="size-8 text-muted-foreground/15 mb-2" />
+                      <p class="text-xs text-muted-foreground/60">No document requests</p>
+                    </div>
+                    <DocumentRequestsTable
+                      v-else
+                      :records="projectDocuments"
+                      :loading="false"
+                      :user-name-map="userNameMap"
+                      :show-project="false"
+                      :compact="true"
+                      :per-page="20"
+                      :hide-search="true"
+                      :search-query="globalSearch"
+                    />
                   </div>
                 </div>
               </div>
@@ -633,7 +699,7 @@ function cardHasMatch(cardId: string): boolean {
               <div class="dashboard-card" :style="{ '--card-color': '#f43f5e' }" :class="{ 'has-search-match': cardHasMatch('payments'), 'no-search-match': globalSearch.trim() && !cardHasMatch('payments') }">
                 <div class="card-inner">
                   <div class="card-header-bar"><div class="card-header-content">
-                    <div class="card-icon-wrap bg-gradient-to-br from-pink-500 to-rose-500"><Icon name="i-lucide-credit-card" class="size-3.5 text-white" /></div>
+                    <div class="card-icon-wrap bg-gradient-to-br from-pink-500 to-rose-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('payments')"><Icon name="i-lucide-credit-card" class="size-3.5 text-white" /></div>
                     <h3 class="card-title">Payments</h3>
                   </div></div>
                   <div class="card-body">
@@ -648,7 +714,7 @@ function cardHasMatch(cardId: string): boolean {
             <div class="dashboard-card bento-events" :style="{ '--card-color': '#d946ef' }" :class="{ 'has-search-match': cardHasMatch('events'), 'no-search-match': globalSearch.trim() && !cardHasMatch('events') }">
               <div class="card-inner">
                 <div class="card-header-bar"><div class="card-header-content">
-                  <div class="card-icon-wrap bg-gradient-to-br from-fuchsia-500 to-pink-500"><Icon name="i-lucide-calendar-days" class="size-3.5 text-white" /></div>
+                  <div class="card-icon-wrap bg-gradient-to-br from-fuchsia-500 to-pink-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('events')"><Icon name="i-lucide-calendar-days" class="size-3.5 text-white" /></div>
                   <h3 class="card-title">Events</h3>
                   <Badge v-if="projectEvents.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectEvents.length }}</Badge>
                 </div></div>
@@ -685,7 +751,7 @@ function cardHasMatch(cardId: string): boolean {
               <div class="dashboard-card" :style="{ '--card-color': '#0ea5e9' }" :class="{ 'has-search-match': cardHasMatch('chat-room'), 'no-search-match': globalSearch.trim() && !cardHasMatch('chat-room') }">
                 <div class="card-inner">
                   <div class="card-header-bar"><div class="card-header-content">
-                    <div class="card-icon-wrap bg-gradient-to-br from-sky-500 to-cyan-500"><Icon name="i-lucide-message-circle" class="size-3.5 text-white" /></div>
+                    <div class="card-icon-wrap bg-gradient-to-br from-sky-500 to-cyan-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('chat-room')"><Icon name="i-lucide-message-circle" class="size-3.5 text-white" /></div>
                     <h3 class="card-title">Chat Room</h3>
                     <Badge v-if="allChatMessagesSorted.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ allChatMessagesSorted.length }}</Badge>
                   </div></div>
@@ -749,7 +815,7 @@ function cardHasMatch(cardId: string): boolean {
               <div class="dashboard-card" :style="{ '--card-color': '#84cc16' }" :class="{ 'has-search-match': cardHasMatch('permits'), 'no-search-match': globalSearch.trim() && !cardHasMatch('permits') }">
                 <div class="card-inner">
                   <div class="card-header-bar"><div class="card-header-content">
-                    <div class="card-icon-wrap bg-gradient-to-br from-lime-500 to-green-500"><Icon name="i-lucide-clipboard-check" class="size-3.5 text-white" /></div>
+                    <div class="card-icon-wrap bg-gradient-to-br from-lime-500 to-green-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('permits')"><Icon name="i-lucide-clipboard-check" class="size-3.5 text-white" /></div>
                     <h3 class="card-title">Permits</h3>
                     <Badge v-if="projectPermits.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectPermits.length }}</Badge>
                   </div></div>
@@ -763,7 +829,7 @@ function cardHasMatch(cardId: string): boolean {
               <div class="dashboard-card" :style="{ '--card-color': '#eab308' }" :class="{ 'has-search-match': cardHasMatch('notes'), 'no-search-match': globalSearch.trim() && !cardHasMatch('notes') }">
                 <div class="card-inner">
                   <div class="card-header-bar"><div class="card-header-content">
-                    <div class="card-icon-wrap bg-gradient-to-br from-yellow-500 to-amber-500"><Icon name="i-lucide-sticky-note" class="size-3.5 text-white" /></div>
+                    <div class="card-icon-wrap bg-gradient-to-br from-yellow-500 to-amber-500 cursor-pointer hover:scale-110 transition-transform" title="Expand" @click.stop="expandCard('notes')"><Icon name="i-lucide-sticky-note" class="size-3.5 text-white" /></div>
                     <h3 class="card-title">Notes</h3>
                     <Badge v-if="projectNotes.length" variant="secondary" class="text-[9px] ml-auto h-4 px-1.5">{{ projectNotes.length }}</Badge>
                   </div></div>
@@ -781,6 +847,163 @@ function cardHasMatch(cardId: string): boolean {
       </div>
     </div>
   </ProjectsLayout>
+
+  <!-- ═══ CARD EXPAND POPUP ═══ -->
+  <Teleport to="body">
+    <Transition name="card-overlay">
+      <div
+        v-if="expandedCard"
+        class="card-expand-overlay"
+        @click.self="closeExpanded"
+      >
+        <Transition name="card-popup" appear>
+          <div
+            v-if="expandedCard"
+            class="card-expand-panel"
+            :style="{
+              boxShadow: `0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px ${cardMetaMap[expandedCard!]?.color || '#6366f1'}44, 0 0 80px ${cardMetaMap[expandedCard!]?.color || '#6366f1'}18`
+            }"
+          >
+            <!-- ── Premium Header ── -->
+            <div
+              class="card-expand-header"
+              :class="`bg-gradient-to-br ${cardMetaMap[expandedCard!]?.accent || ''}`"
+            >
+              <!-- Decorative floating orbs -->
+              <div class="expand-orb expand-orb-1" />
+              <div class="expand-orb expand-orb-2" />
+              <div class="expand-orb expand-orb-3" />
+
+              <!-- Left: Icon + Title -->
+              <div class="flex items-center gap-4 relative z-10">
+                <div class="expand-icon-glass">
+                  <Icon :name="cardMetaMap[expandedCard!]?.icon || 'i-lucide-info'" class="size-6 text-white" />
+                </div>
+                <div>
+                  <p class="text-white font-extrabold text-xl leading-none tracking-tight">{{ cardMetaMap[expandedCard!]?.title }}</p>
+                  <div class="flex items-center gap-2 mt-1.5">
+                    <span class="text-white/65 text-xs">{{ customerAddress || customerName }}</span>
+                    <span v-if="expandedCardCount" class="inline-flex items-center gap-1 bg-white/15 backdrop-blur-sm text-white/90 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-white/20">
+                      <span class="size-1 rounded-full bg-white/70 inline-block" />
+                      {{ expandedCardCount }} records
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: ESC hint + Close -->
+              <div class="flex items-center gap-2 relative z-10">
+                <span class="hidden sm:inline-flex items-center text-white/40 text-[10px] font-mono border border-white/15 px-1.5 py-0.5 rounded-md">ESC</span>
+                <button class="expand-close-btn" @click="closeExpanded">
+                  <Icon name="i-lucide-x" class="size-4 text-white" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Body -->
+            <div class="card-expand-body">
+
+              <!-- Project Info -->
+              <template v-if="expandedCard === 'project-info'">
+                <div class="divide-y divide-border/40">
+                  <div v-for="field in projectInfoFields" :key="field.label" class="flex items-center justify-between py-3 px-2 hover:bg-muted/20 rounded transition-colors">
+                    <span class="text-sm text-muted-foreground font-medium">{{ field.label }}</span>
+                    <span class="text-sm font-semibold text-right max-w-[60%]">{{ field.value }}</span>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Production Info -->
+              <template v-else-if="expandedCard === 'production-info'">
+                <div class="divide-y divide-border/40">
+                  <div
+                    v-for="field in productionFields"
+                    :key="field.label"
+                    class="py-3 px-2 hover:bg-muted/20 rounded transition-colors"
+                    :class="field.wrap ? 'flex flex-col gap-1.5' : 'flex items-center justify-between'"
+                  >
+                    <span class="text-sm text-muted-foreground font-medium">{{ field.label }}</span>
+                    <div v-if="field.chips" class="flex flex-wrap gap-1.5">
+                      <Badge
+                        v-for="chip in field.value.split(',').map((s: string) => s.trim()).filter(Boolean)"
+                        :key="chip"
+                        variant="outline"
+                        :class="field.isStatus ? statusColor(chip) : 'bg-muted/40 text-foreground border-border/50'"
+                        class="text-xs px-2 py-0.5"
+                      >{{ chip }}</Badge>
+                    </div>
+                    <Badge v-else-if="field.isStatus" variant="outline" :class="statusColor(field.value)" class="text-xs self-start">{{ field.value }}</Badge>
+                    <span v-else class="text-sm font-semibold" :class="field.wrap ? 'text-left' : 'text-right max-w-[60%]'">{{ field.value }}</span>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Project Finance -->
+              <template v-else-if="expandedCard === 'project-finance'">
+                <FinanceTable :records="financeRecords" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="false" />
+              </template>
+
+              <!-- Documents -->
+              <template v-else-if="expandedCard === 'documents'">
+                <DocumentRequestsTable :records="projectDocuments" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="false" :per-page="50" />
+              </template>
+
+              <!-- Payments -->
+              <template v-else-if="expandedCard === 'payments'">
+                <PaymentsTable :records="projectPayments" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="false" :per-page="50" />
+              </template>
+
+              <!-- Events -->
+              <template v-else-if="expandedCard === 'events'">
+                <div class="divide-y divide-border/30 overflow-auto">
+                  <div v-for="evt in projectEvents" :key="evt['Row ID'] || evt['Event ID']" class="py-3 px-2 hover:bg-muted/20 transition-colors">
+                    <div class="flex items-center gap-2 mb-1">
+                      <Badge variant="outline" class="text-xs">{{ evt['Event Type'] }}</Badge>
+                      <Badge v-if="evt['Event Status']" variant="outline" :class="statusColor(evt['Event Status'])" class="text-xs">{{ evt['Event Status'] }}</Badge>
+                      <span v-if="evt['Event Date']" class="text-xs text-muted-foreground ml-auto">{{ evt['Event Date'] }}</span>
+                    </div>
+                    <p v-if="evt['Event Description']" class="text-sm text-foreground/80">{{ evt['Event Description'] }}</p>
+                  </div>
+                  <div v-if="!projectEvents.length" class="py-12 text-center text-muted-foreground text-sm">No events</div>
+                </div>
+              </template>
+
+              <!-- Chat Room -->
+              <template v-else-if="expandedCard === 'chat-room'">
+                <div class="flex flex-col h-full gap-2 overflow-auto px-1">
+                  <div v-for="msg in allChatMessagesSorted" :key="msg['Row ID']" class="flex gap-2.5">
+                    <div class="size-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-[10px] font-bold text-primary">
+                      {{ (resolveName(msg.Email) || msg.Email || '?').charAt(0).toUpperCase() }}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-baseline gap-2">
+                        <span class="text-xs font-semibold">{{ resolveName(msg.Email) }}</span>
+                        <span class="text-[10px] text-muted-foreground">{{ msg.TimeStamp?.value || msg.TimeStamp }}</span>
+                      </div>
+                      <p class="text-sm text-foreground/80 mt-0.5">{{ msg.Chat }}</p>
+                    </div>
+                  </div>
+                  <div v-if="!allChatMessagesSorted.length" class="py-12 text-center text-muted-foreground text-sm">No messages</div>
+                </div>
+              </template>
+
+              <!-- Permits -->
+              <template v-else-if="expandedCard === 'permits'">
+                <PermitsTable :records="projectPermits" :loading="false" :user-name-map="userNameMap" :show-project="false" :compact="false" :per-page="50" />
+              </template>
+
+              <!-- Notes -->
+              <template v-else-if="expandedCard === 'notes'">
+                <NotesTable :records="projectNotes" :loading="false" :user-name-map="userNameMap" :customer-map="customerNameMap" :show-project="false" :compact="false" :per-page="50" />
+              </template>
+
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
+  </Teleport>
+
 
   <!-- Google Drive Files Modal -->
   <CustomerFilesModal
@@ -1057,4 +1280,193 @@ function cardHasMatch(cardId: string): boolean {
 .chat-card-scroll::-webkit-scrollbar { width: 3px; }
 .chat-card-scroll::-webkit-scrollbar-track { background: transparent; }
 .chat-card-scroll::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.15); border-radius: 999px; }
+
+
+/* ─── Card Expand Popup — Premium Redesign ────────────────── */
+.card-expand-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+.card-expand-panel {
+  width: min(94vw, 1160px);
+  height: min(90vh, 840px);
+  border-radius: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  border: 1px solid var(--border);
+  /* box-shadow set inline per card color */
+  will-change: transform, opacity;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.7) !important;
+}
+
+/* ── Header ── */
+.card-expand-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px;
+  flex-shrink: 0;
+  overflow: hidden;
+  min-height: 88px;
+}
+
+/* Animated floating orbs */
+.expand-orb {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+.expand-orb-1 {
+  width: 260px;
+  height: 260px;
+  top: -120px;
+  right: 60px;
+  animation: orbDrift 7s ease-in-out infinite;
+}
+.expand-orb-2 {
+  width: 140px;
+  height: 140px;
+  top: -40px;
+  right: -30px;
+  background: rgba(255, 255, 255, 0.08);
+  animation: orbDrift 5s ease-in-out infinite reverse;
+}
+.expand-orb-3 {
+  width: 90px;
+  height: 90px;
+  bottom: -30px;
+  right: 230px;
+  background: rgba(255, 255, 255, 0.07);
+  animation: orbDrift 9s ease-in-out infinite 1s;
+}
+@keyframes orbDrift {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-12px) scale(1.06); }
+}
+
+/* Frosted-glass icon container */
+.expand-icon-glass {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.18),
+    inset 0 1px 0 rgba(255,255,255,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+.expand-icon-glass:hover { transform: scale(1.05) rotate(-3deg); }
+
+/* Premium close button */
+.expand-close-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: white;
+}
+.expand-close-btn:hover {
+  background: rgba(255,255,255,0.22);
+  transform: scale(1.12) rotate(90deg);
+}
+.expand-close-btn:active { transform: scale(0.93); }
+
+/* ── Body ── */
+.card-expand-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--background);
+  color: var(--foreground);
+  position: relative;
+}
+
+/* Force data to be highly visible in expanded mode */
+.card-expand-body table,
+.card-expand-body .v-table,
+.card-expand-body thead,
+.card-expand-body .divide-y > * {
+  opacity: 1 !important;
+  color: var(--foreground) !important;
+}
+
+.card-expand-body thead th {
+  color: var(--foreground) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+
+.card-expand-body td {
+  color: color-mix(in srgb, var(--foreground) 90%, transparent) !important;
+}
+
+.card-expand-body .text-muted-foreground {
+  color: color-mix(in srgb, var(--foreground) 75%, transparent) !important;
+}
+
+.card-expand-body .font-semibold,
+.card-expand-body .font-bold {
+  color: var(--foreground) !important;
+}
+.card-expand-body::-webkit-scrollbar { width: 5px; }
+.card-expand-body::-webkit-scrollbar-track { background: transparent; }
+.card-expand-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted-foreground) 18%, transparent);
+  border-radius: 999px;
+}
+.card-expand-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+}
+
+/* ── Overlay fade ── */
+.card-overlay-enter-active { transition: opacity 0.25s ease; }
+.card-overlay-leave-active { transition: opacity 0.2s ease; }
+.card-overlay-enter-from,
+.card-overlay-leave-to { opacity: 0; }
+
+/* ── Panel spring animation ── */
+.card-popup-enter-active {
+  transition:
+    opacity 0.3s ease,
+    transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.card-popup-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.card-popup-enter-from {
+  opacity: 0;
+  transform: scale(0.84) translateY(24px);
+}
+.card-popup-leave-to {
+  opacity: 0;
+  transform: scale(0.92) translateY(10px);
+}
 </style>

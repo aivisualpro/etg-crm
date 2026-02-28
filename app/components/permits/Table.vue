@@ -301,7 +301,7 @@ watch(sentinelRef, (el) => {
                   <NuxtLink
                     v-if="rec['Project ID']"
                     :to="`/projects/${rec['Project ID']}`"
-                    class="text-primary hover:underline block truncate max-w-[180px]"
+                    class="text-primary hover:underline block whitespace-nowrap"
                     :class="compact ? 'text-[10px]' : 'text-[11px]'"
                     :title="resolveProjectAddress(rec['Project ID']) + ' (' + rec['Project ID'] + ')'"
                   >

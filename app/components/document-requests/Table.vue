@@ -273,12 +273,11 @@ watch(sentinelRef, (el) => {
                 class="whitespace-nowrap"
                 :class="compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'"
               >
-                <!-- Project ID → show address with link -->
                 <template v-if="col.key === 'Project ID'">
                   <NuxtLink
                     v-if="rec['Project ID']"
                     :to="`/projects/${rec['Project ID']}`"
-                    class="text-primary hover:underline block truncate max-w-[180px]"
+                    class="text-primary hover:underline block whitespace-nowrap"
                     :class="compact ? 'text-[10px]' : 'text-[11px]'"
                     :title="resolveProjectAddress(rec['Project ID']) + ' (' + rec['Project ID'] + ')'"
                   >
