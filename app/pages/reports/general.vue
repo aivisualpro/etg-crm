@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import NumberFlow from '@number-flow/vue'
+import { toast } from 'vue-sonner'
 
 const { setHeader } = usePageHeader()
 setHeader({ title: 'General Report', description: 'Project analytics & performance insights', icon: 'i-lucide-clipboard-list' })
 
-const { projects, userNameMap, customerNameMap, init } = useDashboardStore()
+const { projects, userNameMap, customerNameMap, salesReps, init } = useDashboardStore()
 init()
+const { user } = useAuth()
 
 // ─── Filter State (multi-select arrays) ─────────────
 const selStatuses = ref<string[]>([])
@@ -13,6 +15,10 @@ const selJobStatuses = ref<string[]>([])
 const selBranches = ref<string[]>([])
 const selTypes = ref<string[]>([])
 const selPMs = ref<string[]>([])
+const selSalesReps = ref<string[]>([])
+const selEquipment = ref<string[]>([])
+const selUtility = ref<string[]>([])
+const selPermitTech = ref<string[]>([])
 const dateFrom = ref('')
 const dateTo = ref('')
 const searchQuery = ref('')
@@ -20,50 +26,84 @@ const activeTab = ref('overview')
 const sidebarCollapsed = ref(false)
 
 // Per-filter search state
-const filterSearch = reactive({ status: '', jobStatus: '', branch: '', type: '', pm: '' })
+const filterSearch = reactive({ status: '', jobStatus: '', branch: '', type: '', pm: '', salesRep: '', equipment: '', utility: '', permitTech: '' })
 
-// ─── Unique filter options (split comma-separated) ──
-function uniqueSplitSorted(field: string): string[] {
-  const set = new Set<string>()
-  for (const p of projects.value) {
-    const raw = p[field]
-    if (!raw) continue
-    String(raw).split(',').forEach(part => {
-      const trimmed = part.trim()
-      if (trimmed) set.add(trimmed)
-    })
-  }
-  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+// ─── Cascading filter options (each filter shows options from data filtered by ALL OTHER filters) ──
+// Applies all filters EXCEPT the one identified by `excludeKey`
+function filterExcluding(excludeKey: string): any[] {
+  let recs = [...projects.value]
+  if (excludeKey !== 'status' && selStatuses.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Status'], selStatuses.value))
+  if (excludeKey !== 'jobStatus' && selJobStatuses.value.length) recs = recs.filter(p => fieldMatchesAny(p['Job Status'], selJobStatuses.value))
+  if (excludeKey !== 'branch' && selBranches.value.length) recs = recs.filter(p => fieldMatchesAny(p['Branch Name'], selBranches.value))
+  if (excludeKey !== 'type' && selTypes.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Type'], selTypes.value))
+  if (excludeKey !== 'pm' && selPMs.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Manager'], selPMs.value))
+  if (excludeKey !== 'salesRep' && selSalesReps.value.length) recs = recs.filter(p => fieldMatchesAny(p['Sales Rep'], selSalesReps.value))
+  if (excludeKey !== 'equipment' && selEquipment.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Equipment'], selEquipment.value))
+  if (excludeKey !== 'utility' && selUtility.value.length) recs = recs.filter(p => fieldMatchesAny(p['Utillity'], selUtility.value))
+  if (excludeKey !== 'permitTech' && selPermitTech.value.length) recs = recs.filter(p => fieldMatchesAny(p['Permit Coordinator'], selPermitTech.value))
+  if (dateFrom.value) { const f = new Date(dateFrom.value); f.setHours(0,0,0,0); recs = recs.filter(p => { const d = parseDate(p['TimeStamp']); return d && d >= f }) }
+  if (dateTo.value) { const t = new Date(dateTo.value); t.setHours(23,59,59,999); recs = recs.filter(p => { const d = parseDate(p['TimeStamp']); return d && d <= t }) }
+  return recs
 }
-const statuses = computed(() => uniqueSplitSorted('Project Status'))
-const jobStatuses = computed(() => uniqueSplitSorted('Job Status'))
-const branches = computed(() => uniqueSplitSorted('Branch Name'))
-const types = computed(() => uniqueSplitSorted('Project Type'))
-const pms = computed(() => {
-  const set = new Set<string>()
-  for (const p of projects.value) {
-    const raw = p['Project Manager']
-    if (!raw) continue
-    String(raw).split(',').forEach(part => { const t = part.trim(); if (t) set.add(t) })
+
+function splitCountSorted(records: any[], field: string): { value: string, count: number }[] {
+  const counts: Record<string, number> = {}
+  for (const p of records) {
+    const raw = p[field]; if (!raw) continue
+    String(raw).split(',').forEach(part => { const t = part.trim(); if (t) counts[t] = (counts[t] || 0) + 1 })
   }
-  return Array.from(set).sort().map(e => ({ email: e, name: userNameMap.value[e.toLowerCase()] || e }))
+  return Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }))
+}
+
+function emailCountSorted(records: any[], field: string): { email: string, name: string, count: number }[] {
+  const counts: Record<string, number> = {}
+  for (const p of records) {
+    const raw = p[field]; if (!raw) continue
+    String(raw).split(',').forEach(part => { const t = part.trim(); if (t) counts[t] = (counts[t] || 0) + 1 })
+  }
+  return Object.entries(counts).map(([email, count]) => ({
+    email, count, name: userNameMap.value[email.toLowerCase()] || email,
+  })).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+}
+
+const statuses = computed(() => splitCountSorted(filterExcluding('status'), 'Project Status'))
+const jobStatuses = computed(() => splitCountSorted(filterExcluding('jobStatus'), 'Job Status'))
+const branches = computed(() => splitCountSorted(filterExcluding('branch'), 'Branch Name'))
+const types = computed(() => splitCountSorted(filterExcluding('type'), 'Project Type'))
+const equipments = computed(() => splitCountSorted(filterExcluding('equipment'), 'Project Equipment'))
+const utilities = computed(() => splitCountSorted(filterExcluding('utility'), 'Utillity'))
+const pms = computed(() => emailCountSorted(filterExcluding('pm'), 'Project Manager'))
+const permitTechs = computed(() => emailCountSorted(filterExcluding('permitTech'), 'Permit Coordinator'))
+const salesRepOpts = computed(() => {
+  const recs = filterExcluding('salesRep')
+  const counts: Record<string, number> = {}
+  for (const p of recs) {
+    const raw = p['Sales Rep']; if (!raw) continue
+    String(raw).split(',').forEach(part => { const t = part.trim(); if (t) counts[t] = (counts[t] || 0) + 1 })
+  }
+  return Object.entries(counts).map(([email, count]) => {
+    const sr = salesReps.value.find((r: any) => r.Email?.toLowerCase() === email.toLowerCase())
+    const name = sr ? `${sr['First Name'] || ''} ${sr['Last Name'] || ''}`.trim() : (userNameMap.value[email.toLowerCase()] || email)
+    return { email, name, count }
+  }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 })
 
-// Filtered options per filter search
-function filteredOpts(options: string[], search: string) {
+// Filtered options per filter search (now works with {value,count} or {email,name,count} objects)
+function filteredOpts(options: { value: string, count: number }[], search: string) {
   if (!search.trim()) return options
   const q = search.toLowerCase()
-  return options.filter(o => o.toLowerCase().includes(q))
+  return options.filter(o => o.value.toLowerCase().includes(q))
 }
-function filteredPmOpts(search: string) {
-  if (!search.trim()) return pms.value
+function filteredEmailOpts(options: { email: string, name: string, count: number }[], search: string) {
+  if (!search.trim()) return options
   const q = search.toLowerCase()
-  return pms.value.filter(pm => pm.name.toLowerCase().includes(q) || pm.email.toLowerCase().includes(q))
+  return options.filter(o => o.name.toLowerCase().includes(q) || o.email.toLowerCase().includes(q))
 }
 
 // Toggle helper for multi-select
 const _filterRefs: Record<string, Ref<string[]>> = {
   status: selStatuses, jobStatus: selJobStatuses, branch: selBranches, type: selTypes, pm: selPMs,
+  salesRep: selSalesReps, equipment: selEquipment, utility: selUtility, permitTech: selPermitTech,
 }
 function toggleFilter(key: string, val: string) {
   const arr = _filterRefs[key]
@@ -119,11 +159,15 @@ const filteredProjects = computed(() => {
   if (selBranches.value.length) recs = recs.filter(p => fieldMatchesAny(p['Branch Name'], selBranches.value))
   if (selTypes.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Type'], selTypes.value))
   if (selPMs.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Manager'], selPMs.value))
+  if (selSalesReps.value.length) recs = recs.filter(p => fieldMatchesAny(p['Sales Rep'], selSalesReps.value))
+  if (selEquipment.value.length) recs = recs.filter(p => fieldMatchesAny(p['Project Equipment'], selEquipment.value))
+  if (selUtility.value.length) recs = recs.filter(p => fieldMatchesAny(p['Utillity'], selUtility.value))
+  if (selPermitTech.value.length) recs = recs.filter(p => fieldMatchesAny(p['Permit Coordinator'], selPermitTech.value))
   if (dateFrom.value) { const f = new Date(dateFrom.value); f.setHours(0,0,0,0); recs = recs.filter(p => { const d = parseDate(p['TimeStamp']); return d && d >= f }) }
   if (dateTo.value) { const t = new Date(dateTo.value); t.setHours(23,59,59,999); recs = recs.filter(p => { const d = parseDate(p['TimeStamp']); return d && d <= t }) }
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase()
-    recs = recs.filter(p => [p['Project ID'], p['Customer name'], p['Customer Address'], p['Project Manager'], p['Vendor Name'], p['Project Type']].filter(Boolean).some(v => String(v).toLowerCase().includes(q)))
+    recs = recs.filter(p => [p['Project ID'], p['Customer name'], p['Customer Address'], p['Project Manager'], p['Vendor Name'], p['Project Type'], p['Sales Rep']].filter(Boolean).some(v => String(v).toLowerCase().includes(q)))
   }
   return recs
 })
@@ -166,7 +210,14 @@ const monthlyTrend = computed(() => {
 const statusData = computed(() => {
   const g: Record<string, { count: number, revenue: number }> = {}
   filteredProjects.value.forEach(p => {
-    const s = p['Project Status'] || 'Unknown'; if (!g[s]) g[s] = { count: 0, revenue: 0 }; g[s].count++; g[s].revenue += parsePrice(p['Project Price'])
+    const raw = p['Project Status'] || 'Unknown'
+    const parts = String(raw).split(',').map(s => s.trim()).filter(Boolean)
+    const rev = parsePrice(p['Project Price'])
+    parts.forEach(s => {
+      if (!g[s]) g[s] = { count: 0, revenue: 0 }
+      g[s].count++
+      g[s].revenue += rev / parts.length
+    })
   })
   return Object.entries(g).map(([name, d]) => ({ name, count: d.count, revenue: Math.round(d.revenue) })).sort((a, b) => b.revenue - a.revenue)
 })
@@ -264,8 +315,81 @@ onMounted(() => { _obs = new IntersectionObserver(e => { if (e[0]?.isIntersectin
 onUnmounted(() => { _obs?.disconnect() })
 watch(sentinelRef, el => { _obs?.disconnect(); if (el) _obs?.observe(el) })
 
-function resetFilters() { selStatuses.value = []; selJobStatuses.value = []; selBranches.value = []; selTypes.value = []; selPMs.value = []; dateFrom.value = ''; dateTo.value = ''; searchQuery.value = ''; Object.keys(filterSearch).forEach(k => (filterSearch as any)[k] = '') }
-const hasActiveFilters = computed(() => selStatuses.value.length || selJobStatuses.value.length || selBranches.value.length || selTypes.value.length || selPMs.value.length || dateFrom.value || dateTo.value || searchQuery.value)
+function resetFilters() { selStatuses.value = []; selJobStatuses.value = []; selBranches.value = []; selTypes.value = []; selPMs.value = []; selSalesReps.value = []; selEquipment.value = []; selUtility.value = []; selPermitTech.value = []; dateFrom.value = ''; dateTo.value = ''; searchQuery.value = ''; Object.keys(filterSearch).forEach(k => (filterSearch as any)[k] = '') }
+const hasActiveFilters = computed(() => selStatuses.value.length || selJobStatuses.value.length || selBranches.value.length || selTypes.value.length || selPMs.value.length || selSalesReps.value.length || selEquipment.value.length || selUtility.value.length || selPermitTech.value.length || dateFrom.value || dateTo.value || searchQuery.value)
+
+// ─── Filter Templates (save/load from BigQuery) ─────
+const savedTemplates = ref<any[]>([])
+const showSaveDialog = ref(false)
+const showTemplatesPanel = ref(false)
+const templateName = ref('')
+const savingTemplate = ref(false)
+const loadingTemplates = ref(false)
+
+function getCurrentFilters() {
+  return {
+    selStatuses: selStatuses.value, selJobStatuses: selJobStatuses.value, selBranches: selBranches.value,
+    selTypes: selTypes.value, selPMs: selPMs.value, selSalesReps: selSalesReps.value,
+    selEquipment: selEquipment.value, selUtility: selUtility.value, selPermitTech: selPermitTech.value,
+    dateFrom: dateFrom.value, dateTo: dateTo.value,
+  }
+}
+
+function applyTemplate(t: any) {
+  try {
+    const f = typeof t.filters === 'string' ? JSON.parse(t.filters) : t.filters
+    selStatuses.value = f.selStatuses || []; selJobStatuses.value = f.selJobStatuses || []
+    selBranches.value = f.selBranches || []; selTypes.value = f.selTypes || []
+    selPMs.value = f.selPMs || []; selSalesReps.value = f.selSalesReps || []
+    selEquipment.value = f.selEquipment || []; selUtility.value = f.selUtility || []
+    selPermitTech.value = f.selPermitTech || []
+    dateFrom.value = f.dateFrom || ''; dateTo.value = f.dateTo || ''
+    showTemplatesPanel.value = false
+    toast.success(`Template "${t.name}" applied`)
+  } catch { toast.error('Failed to apply template') }
+}
+
+async function loadTemplates() {
+  if (!user.value?.email) return
+  loadingTemplates.value = true
+  try {
+    const data = await $fetch<{ success: boolean, templates: any[] }>('/api/bigquery/filter-templates', {
+      query: { route: '/reports/general', userEmail: user.value.email },
+    })
+    if (data.success) savedTemplates.value = data.templates
+  } catch { /* silent */ } finally { loadingTemplates.value = false }
+}
+
+async function saveTemplate() {
+  if (!templateName.value.trim() || !user.value?.email) return
+  savingTemplate.value = true
+  try {
+    await $fetch('/api/bigquery/filter-templates', {
+      method: 'POST',
+      body: {
+        name: templateName.value.trim(),
+        route: '/reports/general',
+        filters: getCurrentFilters(),
+        userEmail: user.value.email,
+        userName: user.value.name || user.value.email,
+        isShared: false,
+      },
+    })
+    toast.success('Template saved!')
+    showSaveDialog.value = false; templateName.value = ''
+    loadTemplates()
+  } catch { toast.error('Failed to save template') } finally { savingTemplate.value = false }
+}
+
+async function deleteTemplate(id: string) {
+  try {
+    await $fetch('/api/bigquery/filter-templates', { method: 'DELETE', body: { id } })
+    toast.success('Template deleted')
+    savedTemplates.value = savedTemplates.value.filter(t => t.id !== id)
+  } catch { toast.error('Failed to delete template') }
+}
+
+onMounted(() => loadTemplates())
 
 const barColors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16']
 const donutColors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4']
@@ -278,9 +402,32 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
     <div class="shrink-0 border-r bg-card/50 flex flex-col min-h-0 transition-all duration-300 overflow-hidden" :class="sidebarCollapsed ? 'w-[52px]' : 'w-[260px]'">
       <div class="flex items-center justify-between px-3 pt-3 pb-1">
         <p v-if="!sidebarCollapsed" class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Filters</p>
-        <button class="p-1 rounded-md hover:bg-muted transition-colors" @click="sidebarCollapsed = !sidebarCollapsed">
-          <Icon :name="sidebarCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'" class="size-3.5 text-muted-foreground" />
-        </button>
+        <div class="flex items-center gap-1">
+          <button v-if="!sidebarCollapsed" class="p-1 rounded-md hover:bg-muted transition-colors" title="Load Template" @click="showTemplatesPanel = !showTemplatesPanel">
+            <Icon name="i-lucide-folder-open" class="size-3.5 text-muted-foreground" />
+          </button>
+          <button v-if="!sidebarCollapsed && hasActiveFilters" class="p-1 rounded-md hover:bg-muted transition-colors" title="Save Filters as Template" @click="showSaveDialog = true">
+            <Icon name="i-lucide-save" class="size-3.5 text-muted-foreground" />
+          </button>
+          <button class="p-1 rounded-md hover:bg-muted transition-colors" @click="sidebarCollapsed = !sidebarCollapsed">
+            <Icon :name="sidebarCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'" class="size-3.5 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Templates Panel -->
+      <div v-if="showTemplatesPanel && !sidebarCollapsed" class="px-3 pb-2 space-y-1.5">
+        <div class="flex items-center justify-between"><span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Saved Templates</span><button class="text-[10px] text-muted-foreground hover:text-foreground" @click="showTemplatesPanel = false">×</button></div>
+        <div v-if="loadingTemplates" class="text-center py-3"><Icon name="i-lucide-loader-2" class="size-4 animate-spin text-muted-foreground/40" /></div>
+        <div v-else-if="savedTemplates.length === 0" class="text-center py-3 text-[10px] text-muted-foreground/50">No saved templates</div>
+        <div v-else class="space-y-1 max-h-[150px] overflow-y-auto">
+          <div v-for="t in savedTemplates" :key="t.id" class="group flex items-center gap-1.5 p-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors" @click="applyTemplate(t)">
+            <Icon name="i-lucide-bookmark" class="size-3 text-primary shrink-0" />
+            <div class="flex-1 min-w-0"><p class="text-[11px] font-medium truncate">{{ t.name }}</p></div>
+            <button class="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 transition-all" @click.stop="deleteTemplate(t.id)"><Icon name="i-lucide-trash-2" class="size-2.5 text-destructive" /></button>
+          </div>
+        </div>
+        <Separator />
       </div>
 
       <div v-if="!sidebarCollapsed" class="flex flex-col gap-3.5 p-3 overflow-y-auto flex-1">
@@ -295,9 +442,10 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
             <input v-model="filterSearch.status" placeholder="Search statuses…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" />
           </div>
           <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
-            <label v-for="opt in filteredOpts(statuses, filterSearch.status)" :key="opt" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selStatuses.includes(opt) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
-              <input type="checkbox" :checked="selStatuses.includes(opt)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('status', opt)" />
-              <span class="truncate">{{ opt }}</span>
+            <label v-for="opt in filteredOpts(statuses, filterSearch.status)" :key="opt.value" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selStatuses.includes(opt.value) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selStatuses.includes(opt.value)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('status', opt.value)" />
+              <span class="truncate flex-1">{{ opt.value }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ opt.count }}</span>
             </label>
             <p v-if="filteredOpts(statuses, filterSearch.status).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
           </div>
@@ -313,9 +461,10 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
             <input v-model="filterSearch.jobStatus" placeholder="Search job statuses…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" />
           </div>
           <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
-            <label v-for="opt in filteredOpts(jobStatuses, filterSearch.jobStatus)" :key="opt" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selJobStatuses.includes(opt) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
-              <input type="checkbox" :checked="selJobStatuses.includes(opt)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('jobStatus', opt)" />
-              <span class="truncate">{{ opt }}</span>
+            <label v-for="opt in filteredOpts(jobStatuses, filterSearch.jobStatus)" :key="opt.value" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selJobStatuses.includes(opt.value) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selJobStatuses.includes(opt.value)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('jobStatus', opt.value)" />
+              <span class="truncate flex-1">{{ opt.value }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ opt.count }}</span>
             </label>
             <p v-if="filteredOpts(jobStatuses, filterSearch.jobStatus).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
           </div>
@@ -331,9 +480,10 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
             <input v-model="filterSearch.branch" placeholder="Search branches…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" />
           </div>
           <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
-            <label v-for="opt in filteredOpts(branches, filterSearch.branch)" :key="opt" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selBranches.includes(opt) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
-              <input type="checkbox" :checked="selBranches.includes(opt)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('branch', opt)" />
-              <span class="truncate">{{ opt }}</span>
+            <label v-for="opt in filteredOpts(branches, filterSearch.branch)" :key="opt.value" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selBranches.includes(opt.value) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selBranches.includes(opt.value)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('branch', opt.value)" />
+              <span class="truncate flex-1">{{ opt.value }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ opt.count }}</span>
             </label>
             <p v-if="filteredOpts(branches, filterSearch.branch).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
           </div>
@@ -349,9 +499,10 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
             <input v-model="filterSearch.type" placeholder="Search types…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" />
           </div>
           <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
-            <label v-for="opt in filteredOpts(types, filterSearch.type)" :key="opt" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selTypes.includes(opt) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
-              <input type="checkbox" :checked="selTypes.includes(opt)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('type', opt)" />
-              <span class="truncate">{{ opt }}</span>
+            <label v-for="opt in filteredOpts(types, filterSearch.type)" :key="opt.value" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selTypes.includes(opt.value) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selTypes.includes(opt.value)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('type', opt.value)" />
+              <span class="truncate flex-1">{{ opt.value }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ opt.count }}</span>
             </label>
             <p v-if="filteredOpts(types, filterSearch.type).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
           </div>
@@ -367,11 +518,77 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
             <input v-model="filterSearch.pm" placeholder="Search managers…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" />
           </div>
           <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
-            <label v-for="pm in filteredPmOpts(filterSearch.pm)" :key="pm.email" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selPMs.includes(pm.email) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+            <label v-for="pm in filteredEmailOpts(pms, filterSearch.pm)" :key="pm.email" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selPMs.includes(pm.email) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
               <input type="checkbox" :checked="selPMs.includes(pm.email)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('pm', pm.email)" />
-              <span class="truncate">{{ pm.name }}</span>
+              <span class="truncate flex-1">{{ pm.name }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ pm.count }}</span>
             </label>
-            <p v-if="filteredPmOpts(filterSearch.pm).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
+            <p v-if="filteredEmailOpts(pms, filterSearch.pm).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
+          </div>
+        </div>
+
+        <!-- Sales Rep -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Icon name="i-lucide-user-round-search" class="size-3" />Sales Rep
+            <Badge v-if="selSalesReps.length" variant="secondary" class="text-[9px] px-1 py-0 ml-auto">{{ selSalesReps.length }}</Badge>
+          </label>
+          <div class="relative"><Icon name="i-lucide-search" class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" /><input v-model="filterSearch.salesRep" placeholder="Search reps…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" /></div>
+          <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
+            <label v-for="sr in filteredEmailOpts(salesRepOpts, filterSearch.salesRep)" :key="sr.email" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selSalesReps.includes(sr.email) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selSalesReps.includes(sr.email)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('salesRep', sr.email)" />
+              <span class="truncate flex-1">{{ sr.name }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ sr.count }}</span>
+            </label>
+            <p v-if="filteredEmailOpts(salesRepOpts, filterSearch.salesRep).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
+          </div>
+        </div>
+        <!-- Equipment -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Icon name="i-lucide-wrench" class="size-3" />Equipment
+            <Badge v-if="selEquipment.length" variant="secondary" class="text-[9px] px-1 py-0 ml-auto">{{ selEquipment.length }}</Badge>
+          </label>
+          <div class="relative"><Icon name="i-lucide-search" class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" /><input v-model="filterSearch.equipment" placeholder="Search equipment…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" /></div>
+          <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
+            <label v-for="opt in filteredOpts(equipments, filterSearch.equipment)" :key="opt.value" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selEquipment.includes(opt.value) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selEquipment.includes(opt.value)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('equipment', opt.value)" />
+              <span class="truncate flex-1">{{ opt.value }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ opt.count }}</span>
+            </label>
+            <p v-if="filteredOpts(equipments, filterSearch.equipment).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
+          </div>
+        </div>
+        <!-- Utility -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Icon name="i-lucide-plug-zap" class="size-3" />Utility
+            <Badge v-if="selUtility.length" variant="secondary" class="text-[9px] px-1 py-0 ml-auto">{{ selUtility.length }}</Badge>
+          </label>
+          <div class="relative"><Icon name="i-lucide-search" class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" /><input v-model="filterSearch.utility" placeholder="Search utilities…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" /></div>
+          <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
+            <label v-for="opt in filteredOpts(utilities, filterSearch.utility)" :key="opt.value" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selUtility.includes(opt.value) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selUtility.includes(opt.value)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('utility', opt.value)" />
+              <span class="truncate flex-1">{{ opt.value }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ opt.count }}</span>
+            </label>
+            <p v-if="filteredOpts(utilities, filterSearch.utility).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
+          </div>
+        </div>
+        <!-- Permit Tech -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+            <Icon name="i-lucide-file-check" class="size-3" />Permit Tech
+            <Badge v-if="selPermitTech.length" variant="secondary" class="text-[9px] px-1 py-0 ml-auto">{{ selPermitTech.length }}</Badge>
+          </label>
+          <div class="relative"><Icon name="i-lucide-search" class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" /><input v-model="filterSearch.permitTech" placeholder="Search permit techs…" class="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border bg-background/50 outline-none focus:ring-1 focus:ring-primary/30 transition-all" /></div>
+          <div class="max-h-[140px] overflow-y-auto space-y-0.5 rounded-lg border bg-background/50 p-1">
+            <label v-for="pt in filteredEmailOpts(permitTechs, filterSearch.permitTech)" :key="pt.email" class="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors hover:bg-muted" :class="selPermitTech.includes(pt.email) ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground'">
+              <input type="checkbox" :checked="selPermitTech.includes(pt.email)" class="size-3 rounded accent-primary cursor-pointer" @change="toggleFilter('permitTech', pt.email)" />
+              <span class="truncate flex-1">{{ pt.name }}</span>
+              <span class="text-[9px] tabular-nums text-muted-foreground/60 shrink-0">{{ pt.count }}</span>
+            </label>
+            <p v-if="filteredEmailOpts(permitTechs, filterSearch.permitTech).length === 0" class="text-[10px] text-muted-foreground/50 text-center py-2">No matches</p>
           </div>
         </div>
 
@@ -401,6 +618,10 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
             <Badge v-for="s in selBranches" :key="'br-'+s" variant="secondary" class="text-[10px] gap-1">{{ s }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('branch', s)">×</button></Badge>
             <Badge v-for="s in selTypes" :key="'ty-'+s" variant="secondary" class="text-[10px] gap-1">{{ s }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('type', s)">×</button></Badge>
             <Badge v-for="s in selPMs" :key="'pm-'+s" variant="secondary" class="text-[10px] gap-1">{{ resolveName(s) }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('pm', s)">×</button></Badge>
+            <Badge v-for="s in selSalesReps" :key="'sr-'+s" variant="secondary" class="text-[10px] gap-1">{{ resolveName(s) }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('salesRep', s)">×</button></Badge>
+            <Badge v-for="s in selEquipment" :key="'eq-'+s" variant="secondary" class="text-[10px] gap-1">{{ s }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('equipment', s)">×</button></Badge>
+            <Badge v-for="s in selUtility" :key="'ut-'+s" variant="secondary" class="text-[10px] gap-1">{{ s }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('utility', s)">×</button></Badge>
+            <Badge v-for="s in selPermitTech" :key="'pt-'+s" variant="secondary" class="text-[10px] gap-1">{{ resolveName(s) }}<button class="ml-0.5 hover:text-destructive" @click="toggleFilter('permitTech', s)">×</button></Badge>
             <Badge v-if="dateFrom" variant="secondary" class="text-[10px] gap-1">From: {{ dateFrom }}<button class="ml-0.5 hover:text-destructive" @click="dateFrom = ''">×</button></Badge>
             <Badge v-if="dateTo" variant="secondary" class="text-[10px] gap-1">To: {{ dateTo }}<button class="ml-0.5 hover:text-destructive" @click="dateTo = ''">×</button></Badge>
           </div>
@@ -544,4 +765,51 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400', '
       </div>
     </div>
   </div>
+
+  <!-- Save Template Dialog -->
+  <Dialog v-model:open="showSaveDialog">
+    <DialogContent class="max-w-sm">
+      <DialogHeader>
+        <DialogTitle class="flex items-center gap-2">
+          <div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Icon name="i-lucide-save" class="size-4 text-primary" />
+          </div>
+          Save Filter Template
+        </DialogTitle>
+        <DialogDescription class="text-sm">
+          Save your current filter selections as a reusable template. You can load it anytime from the sidebar.
+        </DialogDescription>
+      </DialogHeader>
+      <div class="space-y-3 mt-2">
+        <div class="space-y-1.5">
+          <label class="text-xs font-medium">Template Name</label>
+          <Input v-model="templateName" placeholder="e.g. Active Solar Projects" class="h-9" @keydown.enter="saveTemplate" />
+        </div>
+        <div v-if="hasActiveFilters" class="rounded-lg border p-2.5 bg-muted/30 space-y-1">
+          <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Filters to save</p>
+          <div class="flex flex-wrap gap-1">
+            <Badge v-if="selStatuses.length" variant="secondary" class="text-[9px]">{{ selStatuses.length }} statuses</Badge>
+            <Badge v-if="selJobStatuses.length" variant="secondary" class="text-[9px]">{{ selJobStatuses.length }} job statuses</Badge>
+            <Badge v-if="selBranches.length" variant="secondary" class="text-[9px]">{{ selBranches.length }} branches</Badge>
+            <Badge v-if="selTypes.length" variant="secondary" class="text-[9px]">{{ selTypes.length }} types</Badge>
+            <Badge v-if="selPMs.length" variant="secondary" class="text-[9px]">{{ selPMs.length }} PMs</Badge>
+            <Badge v-if="selSalesReps.length" variant="secondary" class="text-[9px]">{{ selSalesReps.length }} reps</Badge>
+            <Badge v-if="selEquipment.length" variant="secondary" class="text-[9px]">{{ selEquipment.length }} equipment</Badge>
+            <Badge v-if="selUtility.length" variant="secondary" class="text-[9px]">{{ selUtility.length }} utilities</Badge>
+            <Badge v-if="selPermitTech.length" variant="secondary" class="text-[9px]">{{ selPermitTech.length }} permit techs</Badge>
+            <Badge v-if="dateFrom" variant="secondary" class="text-[9px]">Date from</Badge>
+            <Badge v-if="dateTo" variant="secondary" class="text-[9px]">Date to</Badge>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <Button variant="outline" size="sm" :disabled="savingTemplate" @click="showSaveDialog = false">Cancel</Button>
+        <Button size="sm" :disabled="!templateName.trim() || savingTemplate" @click="saveTemplate">
+          <Icon v-if="savingTemplate" name="i-lucide-loader-2" class="size-3.5 mr-1 animate-spin" />
+          <Icon v-else name="i-lucide-save" class="size-3.5 mr-1" />
+          Save Template
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>
 </template>
