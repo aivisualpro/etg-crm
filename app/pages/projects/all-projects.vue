@@ -1,6 +1,43 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
 
+// ─── Use global prefetched store ────────────────────────────
+const {
+  projects,
+  userNameMap,
+  customerNameMap,
+  init,
+  refresh,
+} = useDashboardStore()
+init()
+
+// ─── Project Logs ───────────────────────────────────────────
+const showLogsModal = ref(false)
+const logsProjectId = ref('')
+const logCounts = ref<Record<string, number>>({})
+const loadedLogCounts = ref(false)
+
+function openLogs(projectId: string) {
+  logsProjectId.value = projectId
+  showLogsModal.value = true
+}
+
+// Fetch log counts for all projects in a single batch query
+async function fetchLogCounts() {
+  if (loadedLogCounts.value) return
+  try {
+    const data = await $fetch<{ success: boolean, counts: Record<string, number> }>('/api/bigquery/project-log-counts')
+    if (data.success) logCounts.value = data.counts
+    loadedLogCounts.value = true
+  }
+  catch { /* silent */ }
+}
+
+// Load log counts once projects are ready
+watch(() => projects.value.length, (len) => {
+  if (len > 0 && !loadedLogCounts.value) fetchLogCounts()
+}, { immediate: true })
+
 const { setHeader } = usePageHeader()
 setHeader({ title: 'All Projects', icon: 'i-lucide-folder-kanban' })
 
@@ -67,15 +104,6 @@ function onProjectSaved() {
   refresh()
 }
 
-// ─── Use global prefetched store ────────────────────────────
-const {
-  projects,
-  userNameMap,
-  customerNameMap,
-  init,
-  refresh,
-} = useDashboardStore()
-init()
 
 // ─── Sorting ────────────────────────────────────────────────
 const sortBy = ref('TimeStamp')
@@ -458,9 +486,24 @@ onUnmounted(() => stopRouterAfter())
                   </span>
                 </template>
 
-                <!-- Project ID -->
+                <!-- Project ID with Logs icon -->
                 <template v-else-if="col.key === 'Project ID'">
-                  <span class="font-mono text-xs">{{ project['Project ID'] || '—' }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      class="group/log relative flex items-center justify-center size-6 rounded-md transition-all duration-200 hover:bg-violet-500/10 hover:shadow-sm"
+                      title="View change history"
+                      @click.stop="openLogs(project['Project ID'])"
+                    >
+                      <Icon name="i-lucide-history" class="size-3.5 text-muted-foreground/50 group-hover/log:text-violet-600 dark:group-hover/log:text-violet-400 transition-colors" />
+                      <span
+                        v-if="project['Project ID'] && (logCounts[project['Project ID']] ?? 0) > 0"
+                        class="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-violet-500 text-white text-[8px] font-bold flex items-center justify-center leading-none tabular-nums"
+                      >
+                        {{ (logCounts[project['Project ID']!] ?? 0) > 99 ? '99+' : logCounts[project['Project ID']!] }}
+                      </span>
+                    </button>
+                    <span class="font-mono text-xs">{{ project['Project ID'] || '—' }}</span>
+                  </div>
                 </template>
 
                 <!-- Customer name with avatar -->
@@ -558,6 +601,12 @@ onUnmounted(() => stopRouterAfter())
         </div>
       </DialogContent>
     </Dialog>
+
+    <!-- Project Logs Modal -->
+    <ProjectsLogsModal
+      v-model:open="showLogsModal"
+      :project-id="logsProjectId"
+    />
   </ProjectsLayout>
 </template>
 

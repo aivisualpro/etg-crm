@@ -4,19 +4,44 @@ const { vendors, init } = useDashboardStore()
 init()
 
 const search = ref('')
+const activeBranch = ref('')
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
 
+// Unique branches for tabs
+const branchTabs = computed(() => {
+  const branches = new Set<string>()
+  for (const v of vendors.value) {
+    const raw = v.Branch || ''
+    raw.split(',').forEach((b: string) => { const t = b.trim(); if (t) branches.add(t) })
+  }
+  return Array.from(branches).sort()
+})
+
 const filteredVendors = computed(() => {
-  if (!search.value.trim()) return vendors.value
-  const q = search.value.toLowerCase()
-  return vendors.value.filter(v =>
-    (v['Vendor Name'] || '').toLowerCase().includes(q)
-    || (v.Branch || '').toLowerCase().includes(q)
-    || (v['Vendor Email'] || '').toLowerCase().includes(q)
-    || (v['Vendor Phone'] || '').toLowerCase().includes(q)
-    || (v['Vendor Contact Person'] || '').toLowerCase().includes(q),
-  )
+  let recs = [...vendors.value]
+
+  // Branch tab filter
+  if (activeBranch.value) {
+    recs = recs.filter(v => {
+      const branches = (v.Branch || '').split(',').map((b: string) => b.trim())
+      return branches.includes(activeBranch.value)
+    })
+  }
+
+  // Search filter
+  if (search.value.trim()) {
+    const q = search.value.toLowerCase()
+    recs = recs.filter(v =>
+      (v['Vendor Name'] || '').toLowerCase().includes(q)
+      || (v.Branch || '').toLowerCase().includes(q)
+      || (v['Vendor Email'] || '').toLowerCase().includes(q)
+      || (v['Vendor Phone'] || '').toLowerCase().includes(q)
+      || (v['Vendor Contact Person'] || '').toLowerCase().includes(q),
+    )
+  }
+
+  return recs
 })
 
 watchEffect(() => {
@@ -46,6 +71,27 @@ const columns = [
         </p>
       </div>
     </Teleport>
+
+    <!-- Branch Tabs -->
+    <div class="shrink-0 border-b px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+      <button
+        class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all"
+        :class="!activeBranch ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
+        @click="activeBranch = ''"
+      >
+        All Branches
+        <Badge variant="secondary" class="ml-1.5 text-[9px] px-1 py-0">{{ vendors.length }}</Badge>
+      </button>
+      <button
+        v-for="branch in branchTabs"
+        :key="branch"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all"
+        :class="activeBranch === branch ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
+        @click="activeBranch = branch"
+      >
+        {{ branch }}
+      </button>
+    </div>
 
     <!-- Table -->
     <div class="flex-1 min-h-0 overflow-auto">

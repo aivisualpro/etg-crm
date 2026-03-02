@@ -3,7 +3,7 @@ import NumberFlow from '@number-flow/vue'
 import { toast } from 'vue-sonner'
 
 const { setHeader } = usePageHeader()
-setHeader({ title: 'Financial Reports', description: 'Finance analytics & performance insights', icon: 'i-lucide-pie-chart' })
+setHeader({ title: 'Finance Report', description: 'Finance analytics & performance insights', icon: 'i-lucide-pie-chart' })
 
 const { finance: financeRecords, userNameMap, projectMap, customerNameMap, init } = useDashboardStore()
 init()
@@ -157,7 +157,7 @@ const avatarColors = ['bg-violet-500/15 text-violet-600 dark:text-violet-400','b
 <template>
   <div class="w-full flex-1 min-h-0 flex">
     <!-- ═══ FILTER SIDEBAR ═══ -->
-    <div class="shrink-0 border-r bg-card/50 flex flex-col min-h-0 transition-all duration-300 overflow-hidden" :class="sidebarCollapsed ? 'w-[52px]' : 'w-[260px]'">
+    <div class="shrink-0 border-r bg-card/50 flex flex-col min-h-0 transition-all duration-300 overflow-hidden" :class="sidebarCollapsed ? 'w-[48px]' : 'w-[220px]'">
       <div class="flex items-center justify-between px-3 pt-3 pb-1">
         <p v-if="!sidebarCollapsed" class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Filters</p>
         <div class="flex items-center gap-1">

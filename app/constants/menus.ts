@@ -182,39 +182,32 @@ export const navMenu: NavMenu[] = [
     headingKey: 'nav.reports',
     items: [
       {
-        title: 'Sales Reports',
-        titleKey: 'nav.salesReports',
-        icon: 'i-lucide-trending-up',
-        link: '/reports/sales',
-      },
-      {
-        title: 'Financial Reports',
-        titleKey: 'nav.financialReports',
+        title: 'Finance',
         icon: 'i-lucide-pie-chart',
         link: '/reports/financial',
       },
       {
-        title: 'Ready To Fund Report',
+        title: 'RTF',
         icon: 'i-lucide-badge-dollar-sign',
         link: '/reports/ready-to-fund',
       },
       {
-        title: 'General Report',
+        title: 'General',
         icon: 'i-lucide-clipboard-list',
         link: '/reports/general',
       },
       {
-        title: 'PM Weekly Report',
+        title: 'PM Weekly',
         icon: 'i-lucide-calendar-range',
         link: '/reports/pm-weekly',
       },
       {
-        title: 'Permits Report',
+        title: 'Permits',
         icon: 'i-lucide-stamp',
         link: '/reports/permit',
       },
       {
-        title: 'Documents Requested',
+        title: 'Document Requested',
         icon: 'i-lucide-file-search',
         link: '/reports/documents-requested',
       },

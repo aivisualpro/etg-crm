@@ -189,8 +189,7 @@ function permBadgeClass(val: string) {
 </script>
 
 <template>
-  <AdminLayout>
-    <div class="w-full flex-1 flex flex-col min-h-0">
+  <div class="w-full flex-1 flex flex-col min-h-0">
       <!-- Teleport search + actions to header -->
       <Teleport v-if="isMounted" to="#header-toolbar">
         <div class="flex items-center gap-2 w-full justify-end">
@@ -391,8 +390,7 @@ function permBadgeClass(val: string) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-    </div>
-  </AdminLayout>
+  </div>
 </template>
 
 <style scoped>
