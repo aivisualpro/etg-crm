@@ -112,7 +112,36 @@ export const navMenu: NavMenu[] = [
       {
         title: 'Events',
         icon: 'i-lucide-calendar-days',
-        link: '/events/calendar',
+        children: [
+          {
+            title: 'Events Calendar',
+            link: '/events/calendar',
+          },
+          {
+            title: 'Install Calendar',
+            link: '/events/install-calendar',
+          },
+          {
+            title: 'Tech Calendar',
+            link: '/events/tech-calendar',
+          },
+          {
+            title: 'SSA Calendar',
+            link: '/events/ssa-calendar',
+          },
+          {
+            title: 'Events Dashboard',
+            link: '/events/dashboard',
+          },
+          {
+            title: 'Archive Calendar',
+            link: '/events/archive',
+          },
+          {
+            title: 'Events Without Projects',
+            link: '/events/without-projects',
+          },
+        ],
       },
       {
         title: 'Project Chat',
