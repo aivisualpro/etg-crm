@@ -4,6 +4,7 @@ import { useSidebar } from '~/components/ui/sidebar'
 defineProps<{
   user: {
     name: string
+    email: string
     role: string
     avatar: string
   }
@@ -56,7 +57,7 @@ const showModalTheme = ref(false)
               </Avatar>
               <div class="grid flex-1 text-left text-sm leading-tight">
                 <span class="truncate font-semibold">{{ user.name }}</span>
-                <span class="truncate text-xs">{{ user.role }}</span>
+                <span class="truncate text-xs text-muted-foreground">{{ user.email }}</span>
               </div>
             </div>
           </DropdownMenuLabel>
@@ -65,16 +66,6 @@ const showModalTheme = ref(false)
             <DropdownMenuItem>
               <Icon name="i-lucide-badge-check" />
               Account
-            </DropdownMenuItem>
-            <DropdownMenuItem as-child>
-              <NuxtLink to="/settings" @click="setOpenMobile(false)">
-                <Icon name="i-lucide-settings" />
-                Settings
-              </NuxtLink>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Icon name="i-lucide-bell" />
-              Notifications
             </DropdownMenuItem>
 
             <DropdownMenuItem @click="showModalTheme = true">

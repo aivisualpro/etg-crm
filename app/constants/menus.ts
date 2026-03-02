@@ -199,16 +199,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-file-search',
         link: '/reports/documents-requested',
       },
-      {
-        title: 'PTO Expire 1st Notification',
-        icon: 'i-lucide-bell',
-        link: '/reports/pto-expire-1st',
-      },
-      {
-        title: 'PTO Expire 2nd Notification',
-        icon: 'i-lucide-bell-ring',
-        link: '/reports/pto-expire-2nd',
-      },
     ],
   },
 ]
