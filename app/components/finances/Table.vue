@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   userNameMap?: Record<string, string>
   projectMap?: Record<string, any>
+  customerNameMap?: Record<string, string>
   showProject?: boolean
   compact?: boolean
   perPage?: number
@@ -26,6 +27,7 @@ const props = withDefaults(defineProps<{
   loading: false,
   userNameMap: () => ({}),
   projectMap: () => ({}),
+  customerNameMap: () => ({}),
   showProject: true,
   compact: false,
   perPage: 50,
@@ -39,20 +41,52 @@ const sortKey = ref('TimeStamp')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
 function toggleSort(key: string) {
-  if (key === '_customer') return
+  if (key === '_customer' || key === '_customerAddress') return
   if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else { sortKey.value = key; sortDir.value = 'desc' }
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-function resolveName(email: string): string {
-  if (!email) return '—'
-  return props.userNameMap[email.toLowerCase()] || email
+function titleCase(str: string): string {
+  if (!str) return str
+  return str.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
 }
 
-function getCustomerName(projectId: string): string {
-  const p = props.projectMap[projectId]
-  return p?.['Customer name'] || ''
+function resolveName(email: string): string {
+  if (!email) return '—'
+  const name = props.userNameMap[email.toLowerCase()] || email
+  return titleCase(name)
+}
+
+function getCustomerName(rec: any): string {
+  // The 'Customer name' field in both finance + project records is actually a Customer ID reference
+  // We must resolve it via customerNameMap (Customer ID → actual name)
+  
+  // 1. Try from the finance record's Customer field
+  const finCustId = rec['Customer'] || ''
+  if (finCustId && props.customerNameMap[finCustId]) return titleCase(props.customerNameMap[finCustId])
+  
+  // 2. Try from the project's Customer name / Customer ID fields (which also hold the ID)
+  const projId = rec['Project ID'] || ''
+  const p = props.projectMap[projId]
+  const projCustRef = p?.['Customer name'] || p?.['Customer ID'] || ''
+  if (projCustRef && props.customerNameMap[projCustRef]) return titleCase(props.customerNameMap[projCustRef])
+  
+  // 3. Try the customer email from the project to find a name
+  const custEmail = p?.['Customer Email'] || ''
+  if (custEmail && props.userNameMap[custEmail.toLowerCase()]) return titleCase(props.userNameMap[custEmail.toLowerCase()] || '')
+  
+  return '—'
+}
+
+function getCustomerId(rec: any): string {
+  return rec['Customer'] || props.projectMap[rec['Project ID'] || '']?.['Customer name'] || ''
+}
+
+function getCustomerAddress(rec: any): string {
+  const projId = rec['Project ID'] || ''
+  const p = props.projectMap[projId]
+  return p?.['Customer Address'] || p?.['Address'] || '—'
 }
 
 function formatCurrency(value: any): string {
@@ -85,23 +119,40 @@ function statusColor(status: string): string {
 }
 
 // ─── Columns ────────────────────────────────────────────────
+const DATE_COLS = new Set(['Fund Date', 'Loan Approve', 'Loan Signed', 'Loan Expired', 'PTO Expire', 'PTO Uploaded', 'NTP'])
+const CURRENCY_COLS = new Set(['Loan Amount', 'Net Loan Amount', 'Dealer Amount', 'First Monthly Payment', 'Second Monthly Payment'])
+
 const columns = computed(() => {
   const cols = [
+    { key: 'Finance Company', label: 'Finance Co.', sortable: true },
     ...(props.showProject
       ? [
           { key: 'Project ID', label: 'Project ID', sortable: true },
           { key: '_customer', label: 'Customer', sortable: false },
+          { key: '_customerAddress', label: 'Customer Address', sortable: false },
         ]
       : []),
-    { key: 'Finance Company', label: 'Finance Co.', sortable: true },
     { key: 'Finance Type', label: 'Type', sortable: true },
     { key: 'Finance Terms', label: 'Terms', sortable: true },
     { key: 'Loan Amount', label: 'Loan Amt', sortable: true },
     { key: 'DF', label: 'DF', sortable: true },
     { key: 'Net Loan Amount', label: 'Net Amount', sortable: true },
+    { key: 'Dealer Amount', label: 'Dealer Amt', sortable: true },
     { key: 'Finance Status', label: 'Status', sortable: true },
     { key: 'Fund Date', label: 'Fund Date', sortable: true },
+    { key: 'Fund Note', label: 'Fund Note', sortable: true },
+    { key: 'Money RCVD', label: 'Money RCVD', sortable: true },
+    { key: 'First Monthly Payment', label: '1st Payment', sortable: true },
+    { key: 'First Monthly Payment Months', label: '1st Pmt Months', sortable: true },
+    { key: 'Second Monthly Payment', label: '2nd Payment', sortable: true },
     { key: 'RTF', label: 'RTF', sortable: true },
+    { key: 'RTF Counter', label: 'RTF Counter', sortable: true },
+    { key: 'Loan Approve', label: 'Loan Approve', sortable: true },
+    { key: 'Loan Signed', label: 'Loan Signed', sortable: true },
+    { key: 'Loan Expired', label: 'Loan Expired', sortable: true },
+    { key: 'PTO Expire', label: 'PTO Expire', sortable: true },
+    { key: 'PTO Uploaded', label: 'PTO Uploaded', sortable: true },
+    { key: 'NTP', label: 'NTP', sortable: true },
     { key: 'Create By', label: 'Created By', sortable: true },
   ]
   return cols
@@ -120,7 +171,8 @@ const filtered = computed(() => {
     || (r['Loan ID'] || '').toLowerCase().includes(q)
     || (r['Finance Status'] || '').toLowerCase().includes(q)
     || (r['Finance Terms'] || '').toLowerCase().includes(q)
-    || (getCustomerName(r['Project ID']) || '').toLowerCase().includes(q)
+    || (getCustomerName(r) || '').toLowerCase().includes(q)
+    || (getCustomerAddress(r) || '').toLowerCase().includes(q)
   )
 })
 
@@ -172,11 +224,13 @@ watch(sentinelRef, (el) => {
 // ─── Cell value getter ──────────────────────────────────────
 function cellValue(rec: any, col: { key: string }): string {
   const k = col.key
-  if (k === '_customer') return getCustomerName(rec['Project ID']) || '—'
-  if (k === 'Loan Amount' || k === 'Net Loan Amount' || k === 'Dealer Amount') return rec[k] ? formatCurrency(rec[k]) : '—'
+  if (k === '_customer') return getCustomerName(rec) || '—'
+  if (k === '_customerAddress') return getCustomerAddress(rec)
+  if (CURRENCY_COLS.has(k)) return rec[k] ? formatCurrency(rec[k]) : '—'
   if (k === 'DF') return rec[k] != null ? `${rec[k]}%` : '—'
-  if (k === 'Fund Date') return rec[k] ? formatDate(rec[k]) : '—'
+  if (DATE_COLS.has(k)) return rec[k] ? formatDate(rec[k]) : '—'
   if (k === 'Create By') return rec[k] ? resolveName(rec[k]) : '—'
+  if (k === 'Finance Company') return rec[k] ? titleCase(rec[k]) : '—'
   return rec[k] || '—'
 }
 </script>
@@ -258,17 +312,26 @@ function cellValue(rec: any, col: { key: string }): string {
                   {{ rec['Project ID'] }}
                 </NuxtLink>
 
+                <!-- Customer name as link -->
+                <NuxtLink
+                  v-else-if="col.key === '_customer' && getCustomerId(rec)"
+                  :to="`/customers/${getCustomerId(rec)}`"
+                  class="text-primary hover:underline font-medium"
+                >
+                  {{ cellValue(rec, col) }}
+                </NuxtLink>
+
                 <!-- Status badge -->
-                <template v-else-if="col.key === 'Finance Status'">
-                  <Badge v-if="rec['Finance Status']" variant="outline" :class="statusColor(rec['Finance Status'])" class="text-[10px]">
-                    {{ rec['Finance Status'] }}
+                <template v-else-if="col.key === 'Finance Status' || col.key === 'Money RCVD'">
+                  <Badge v-if="rec[col.key]" variant="outline" :class="statusColor(rec[col.key])" class="text-[10px]">
+                    {{ rec[col.key] }}
                   </Badge>
                   <span v-else class="text-muted-foreground/40">—</span>
                 </template>
 
                 <!-- Currency columns -->
                 <span
-                  v-else-if="['Loan Amount', 'Net Loan Amount', 'Dealer Amount'].includes(col.key)"
+                  v-else-if="CURRENCY_COLS.has(col.key)"
                   class="font-medium tabular-nums"
                 >
                   {{ cellValue(rec, col) }}
@@ -278,13 +341,13 @@ function cellValue(rec: any, col: { key: string }): string {
                 <span v-else-if="col.key === 'DF'" class="tabular-nums">{{ cellValue(rec, col) }}</span>
 
                 <!-- Date columns -->
-                <span v-else-if="col.key === 'Fund Date'" class="tabular-nums">{{ cellValue(rec, col) }}</span>
+                <span v-else-if="DATE_COLS.has(col.key)" class="tabular-nums text-muted-foreground">{{ cellValue(rec, col) }}</span>
 
                 <!-- Finance Company (bold) -->
                 <span v-else-if="col.key === 'Finance Company'" class="font-medium">{{ cellValue(rec, col) }}</span>
 
                 <!-- Default -->
-                <span v-else class="truncate max-w-[150px] block">{{ cellValue(rec, col) }}</span>
+                <span v-else class="truncate max-w-[180px] block">{{ cellValue(rec, col) }}</span>
               </td>
             </tr>
 

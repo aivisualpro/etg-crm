@@ -10,6 +10,7 @@ const {
   finance: financeRecords,
   userNameMap,
   projectMap,
+  customerNameMap,
   init,
 } = useDashboardStore()
 init()
@@ -61,9 +62,11 @@ const filteredRecords = computed(() => {
         :loading="false"
         :user-name-map="userNameMap"
         :project-map="projectMap"
+        :customer-name-map="customerNameMap"
         :show-project="true"
         :compact="false"
         :per-page="50"
+        :search-query="search"
       />
     </div>
   </FinancesLayout>
