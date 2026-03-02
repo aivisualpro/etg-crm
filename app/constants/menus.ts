@@ -170,11 +170,6 @@ export const navMenu: NavMenu[] = [
         link: '/reports/ready-to-fund',
       },
       {
-        title: 'Custom Reports',
-        icon: 'i-lucide-file-sliders',
-        link: '/reports/custom',
-      },
-      {
         title: 'Finance PTO Report',
         icon: 'i-lucide-calculator',
         link: '/reports/finance-pto',
