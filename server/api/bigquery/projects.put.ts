@@ -41,7 +41,24 @@ export default defineEventHandler(async (event) => {
         Jurisdiction = '${escape(body.jurisdiction)}',
         \`Customer ID\` = '${escape(body.customerId)}',
         \`Customer Email\` = '${escape(body.customerEmail)}',
-        \`Customer Phone\` = '${escape(body.customerPhone)}'
+        \`Customer Phone\` = '${escape(body.customerPhone)}',
+        \`SSA Status\` = '${escape(body.ssaStatus)}',
+        \`Solar Install Status\` = '${escape(body.solarInstallStatus)}',
+        \`MPU Installed Status\` = '${escape(body.mpuInstalledStatus)}',
+        \`Battery Installed Status\` = '${escape(body.batteryInstalledStatus)}',
+        \`Completion Status\` = '${escape(body.completionStatus)}',
+        \`Final Status\` = '${escape(body.finalStatus)}',
+        \`PTO Status\` = '${escape(body.ptoStatus)}',
+        \`Fire Approval Needed\` = '${escape(body.fireApprovalNeeded)}',
+        \`Project Start\` = '${escape(body.projectStart)}',
+        \`Project End\` = '${escape(body.projectEnd)}',
+        \`Completion Date\` = '${escape(body.completionDate)}',
+        \`Final Date\` = '${escape(body.finalDate)}',
+        \`PM Approve Project\` = '${escape(body.pmApproveProject)}',
+        \`Finance Ready\` = '${escape(body.financeReady)}',
+        \`PTO Request\` = '${escape(body.ptoRequest)}',
+        \`PTO Submitted\` = '${escape(body.ptoSubmitted)}',
+        \`PTO Received\` = '${escape(body.ptoReceived)}'
       WHERE \`Project ID\` = '${escape(body.projectId)}'
     `
 

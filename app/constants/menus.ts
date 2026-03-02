@@ -56,36 +56,16 @@ export const navMenu: NavMenu[] = [
             link: '/projects/all-projects',
           },
           {
-            title: 'My Open Projects',
+            title: 'Open Projects',
             link: '/projects/my-open',
           },
           {
-            title: 'My Closed Projects',
+            title: 'Closed Projects',
             link: '/projects/my-closed',
           },
           {
-            title: 'My Cancelled Projects',
+            title: 'Cancelled Projects',
             link: '/projects/my-cancelled',
-          },
-          {
-            title: 'Permit Dashboard',
-            link: '/projects/permit-dashboard',
-          },
-          {
-            title: 'Projects Dashboard',
-            link: '/projects/projects-dashboard',
-          },
-          {
-            title: 'RTF Today',
-            link: '/projects/rtf-today',
-          },
-          {
-            title: 'Engineers Dashboard',
-            link: '/projects/engineers-dashboard',
-          },
-          {
-            title: 'PTO & Meterspot Dashboard',
-            link: '/projects/pto-meterspot',
           },
         ],
       },

@@ -55,7 +55,9 @@ const filesModalProject = ref<any>(null)
 
 function openFilesModal(project: any) {
   filesModalProject.value = project
-  showFilesModal.value = true
+  nextTick(() => {
+    showFilesModal.value = true
+  })
 }
 
 // ─── CRUD state ─────────────────────────────────────────────
@@ -169,23 +171,68 @@ const columns = [
   { key: 'PTO Received', label: 'PTO Received', width: '100px' },
   { key: 'AHJ', label: 'AHJ', width: '100px' },
   { key: 'Jurisdiction', label: 'Jurisdiction', width: '120px' },
-  { key: 'Project Folder', label: 'Folder', width: '80px' },
+
   { key: 'Create By', label: 'Created By', width: '130px' },
   { key: 'TimeStamp', label: 'Created', width: '110px' },
 ]
 
+// ─── Project Status Tabs ────────────────────────────────────
+const activeTab = ref('All')
+
+// Helper: split comma-separated Project Status into individual trimmed values
+function getProjectStatuses(p: any): string[] {
+  const raw = String(p['Project Status'] || '').trim()
+  if (!raw) return ['Unknown']
+  return raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+}
+
+const projectStatusTabs = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const p of projects.value) {
+    const statuses = getProjectStatuses(p)
+    for (const s of statuses) {
+      counts[s] = (counts[s] || 0) + 1
+    }
+  }
+  // Sort alphabetically, put Unknown at end
+  const sorted = Object.entries(counts).sort(([a], [b]) => {
+    if (a === 'Unknown') return 1
+    if (b === 'Unknown') return -1
+    return a.localeCompare(b)
+  })
+  return [
+    { label: 'All', count: projects.value.length },
+    ...sorted.map(([label, count]) => ({ label, count })),
+  ]
+})
+
+watch(activeTab, () => { visibleCount.value = CHUNK_SIZE })
+
 // ─── Computed ───────────────────────────────────────────────
 const filteredProjects = computed(() => {
-  if (!search.value) return projects.value
-  const q = search.value.toLowerCase()
-  return projects.value.filter((p: any) => {
-    const searchable = [
-      p['Project ID'], p['Customer name'], p['Customer Address'],
-      p['City'], p['Project Type'], p['Job Status'], p['Project Status'],
-      p['Project Manager'], p['Engineer'], p['Vendor Name'],
-    ].filter(Boolean)
-    return searchable.some(v => String(v).toLowerCase().includes(q))
-  })
+  let list = projects.value
+
+  // Tab filter — match if any of the project's comma-separated statuses equals the active tab
+  if (activeTab.value !== 'All') {
+    list = list.filter((p: any) => {
+      const statuses = getProjectStatuses(p)
+      return statuses.includes(activeTab.value)
+    })
+  }
+
+  // Search filter
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    list = list.filter((p: any) => {
+      const searchable = [
+        p['Project ID'], p['Customer name'], p['Customer Address'],
+        p['City'], p['Project Type'], p['Job Status'], p['Project Status'],
+        p['Project Manager'], p['Engineer'], p['Vendor Name'],
+      ].filter(Boolean)
+      return searchable.some(v => String(v).toLowerCase().includes(q))
+    })
+  }
+  return list
 })
 
 const sortedProjects = computed(() => {
@@ -411,6 +458,27 @@ onUnmounted(() => stopRouterAfter())
         </div>
       </Teleport>
 
+      <!-- Project Status Tabs -->
+      <div class="shrink-0 border-b px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+        <button
+          v-for="tab in projectStatusTabs"
+          :key="tab.label"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all"
+          :class="activeTab === tab.label
+            ? 'bg-primary text-primary-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
+          @click="activeTab = tab.label"
+        >
+          {{ tab.label }}
+          <span
+            class="ml-1 text-[10px] tabular-nums"
+            :class="activeTab === tab.label ? 'opacity-80' : 'opacity-50'"
+          >
+            {{ tab.count }}
+          </span>
+        </button>
+      </div>
+
       <!-- Data Table -->
       <div class="flex-1 min-h-0 overflow-auto">
         <Table>
@@ -428,6 +496,9 @@ onUnmounted(() => stopRouterAfter())
                   <Icon :name="sortIcon(col.key)" class="size-3 opacity-60" />
                 </div>
               </TableHead>
+              <TableHead class="bg-card sticky right-0 z-20 w-[80px] min-w-[80px] shadow-[-2px_0_4px_-2px_hsl(var(--border))]">
+                Actions
+              </TableHead>
             </TableRow>
           </TableHeader>
 
@@ -441,25 +512,22 @@ onUnmounted(() => stopRouterAfter())
               @click="navigateTo(`/projects/${project['Project ID']}`)"
             >
               <TableCell v-for="col in columns" :key="col.key">
-                <!-- Project Folder -->
-                <template v-if="col.key === 'Project Folder'">
-                  <button
-                    v-if="project['Project Folder']"
-                    class="group/folder relative flex items-center justify-center size-8 rounded-lg transition-all duration-200 hover:bg-[#1da462]/10 hover:shadow-sm"
-                    title="View files in Google Drive"
-                    @click.stop="openFilesModal(project)"
-                  >
-                    <svg class="size-5 transition-all duration-200 group-hover/folder:scale-110" viewBox="0 0 24 24" fill="none">
-                      <path d="M4.5 19.5l3-5.25H21l-3 5.25H4.5z" fill="#1da462" opacity=".7" />
-                      <path d="M12 4.5L4.5 17.25l3 2.25L15 7.5 12 4.5z" fill="#1da462" opacity=".85" />
-                      <path d="M21 15l-4.5-7.5L13.5 9l4.5 7.5L21 15z" fill="#1da462" />
-                    </svg>
-                    <span class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-[#34a853] opacity-0 group-hover/folder:opacity-100 transition-opacity" />
-                  </button>
-                  <span v-else class="text-muted-foreground/40">—</span>
-                </template>
 
                 <!-- Status badges -->
+                <template v-if="col.key === 'Project Status'">
+                  <div v-if="project[col.key] && project[col.key] !== '—'" class="flex flex-wrap gap-1">
+                    <Badge
+                      v-for="(s, si) in project[col.key].split(',').map((v: string) => v.trim()).filter(Boolean)"
+                      :key="si"
+                      variant="outline"
+                      :class="statusColor(s)"
+                      class="text-[10px] whitespace-nowrap"
+                    >
+                      {{ s }}
+                    </Badge>
+                  </div>
+                  <span v-else class="text-muted-foreground/40">—</span>
+                </template>
                 <template v-else-if="statusColumns.includes(col.key)">
                   <Badge
                     v-if="project[col.key] && project[col.key] !== '—'"
@@ -486,7 +554,7 @@ onUnmounted(() => stopRouterAfter())
                   </span>
                 </template>
 
-                <!-- Project ID with Logs icon -->
+                <!-- Project ID with Logs & Folder icons -->
                 <template v-else-if="col.key === 'Project ID'">
                   <div class="flex items-center gap-1.5">
                     <button
@@ -501,6 +569,18 @@ onUnmounted(() => stopRouterAfter())
                       >
                         {{ (logCounts[project['Project ID']!] ?? 0) > 99 ? '99+' : logCounts[project['Project ID']!] }}
                       </span>
+                    </button>
+                    <button
+                      v-if="project['Project Folder']"
+                      class="group/folder relative flex items-center justify-center size-7 rounded-lg transition-all duration-200 hover:bg-[#1da462]/15 hover:shadow-md hover:shadow-emerald-500/10"
+                      title="View files in Google Drive"
+                      @click.stop="openFilesModal(project)"
+                    >
+                      <svg class="size-4.5 transition-all duration-200 group-hover/folder:scale-110" viewBox="0 0 24 24" fill="none">
+                        <path d="M4.5 19.5l3-5.25H21l-3 5.25H4.5z" fill="#1da462" opacity=".7" />
+                        <path d="M12 4.5L4.5 17.25l3 2.25L15 7.5 12 4.5z" fill="#1da462" opacity=".85" />
+                        <path d="M21 15l-4.5-7.5L13.5 9l4.5 7.5L21 15z" fill="#1da462" />
+                      </svg>
                     </button>
                     <span class="font-mono text-xs">{{ project['Project ID'] || '—' }}</span>
                   </div>
@@ -535,11 +615,31 @@ onUnmounted(() => stopRouterAfter())
                   <span class="text-sm whitespace-nowrap">{{ cellValue(project, col.key) }}</span>
                 </template>
               </TableCell>
+
+              <!-- Actions (sticky right) -->
+              <TableCell class="sticky right-0 z-10 bg-card shadow-[-2px_0_4px_-2px_hsl(var(--border))]">
+                <div class="flex items-center gap-1">
+                  <button
+                    class="group/edit flex items-center justify-center size-7 rounded-lg transition-all duration-200 hover:bg-blue-500/10 hover:shadow-sm"
+                    title="Edit project"
+                    @click.stop="openEditForm(project)"
+                  >
+                    <Icon name="i-lucide-pencil" class="size-3.5 text-muted-foreground/50 group-hover/edit:text-blue-600 dark:group-hover/edit:text-blue-400 transition-colors" />
+                  </button>
+                  <button
+                    class="group/del flex items-center justify-center size-7 rounded-lg transition-all duration-200 hover:bg-red-500/10 hover:shadow-sm"
+                    title="Delete project"
+                    @click.stop="openDeleteConfirm(project)"
+                  >
+                    <Icon name="i-lucide-trash-2" class="size-3.5 text-muted-foreground/50 group-hover/del:text-red-500 transition-colors" />
+                  </button>
+                </div>
+              </TableCell>
             </TableRow>
 
             <!-- Empty State -->
             <TableRow v-if="visibleProjects.length === 0">
-              <TableCell :colspan="columns.length" class="h-32 text-center">
+              <TableCell :colspan="columns.length + 1" class="h-32 text-center">
                 <div class="flex flex-col items-center gap-2 text-muted-foreground">
                   <Icon name="i-lucide-inbox" class="size-8" />
                   <p>No projects found</p>
@@ -549,7 +649,7 @@ onUnmounted(() => stopRouterAfter())
 
             <!-- Infinite scroll sentinel -->
             <tr v-if="hasMore" ref="sentinelRef">
-              <td :colspan="columns.length" class="h-10 text-center text-xs text-muted-foreground">
+              <td :colspan="columns.length + 1" class="h-10 text-center text-xs text-muted-foreground">
                 Loading more…
               </td>
             </tr>
@@ -561,6 +661,7 @@ onUnmounted(() => stopRouterAfter())
     <!-- Google Drive Files Modal -->
     <CustomerFilesModal
       v-if="filesModalProject"
+      :key="filesModalProject['Project ID']"
       v-model:open="showFilesModal"
       :customer-name="resolveCustomer(filesModalProject) + ' — ' + (filesModalProject['Project ID'] || '')"
       :drive-link="filesModalProject['Project Folder'] || ''"

@@ -1,8 +1,45 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
 
+// ─── Use global prefetched store ────────────────────────────
+const {
+  projects,
+  userNameMap,
+  customerNameMap,
+  init,
+  refresh,
+} = useDashboardStore()
+init()
+
+// ─── Project Logs ───────────────────────────────────────────
+const showLogsModal = ref(false)
+const logsProjectId = ref('')
+const logCounts = ref<Record<string, number>>({})
+const loadedLogCounts = ref(false)
+
+function openLogs(projectId: string) {
+  logsProjectId.value = projectId
+  showLogsModal.value = true
+}
+
+// Fetch log counts for all projects in a single batch query
+async function fetchLogCounts() {
+  if (loadedLogCounts.value) return
+  try {
+    const data = await $fetch<{ success: boolean, counts: Record<string, number> }>('/api/bigquery/project-log-counts')
+    if (data.success) logCounts.value = data.counts
+    loadedLogCounts.value = true
+  }
+  catch { /* silent */ }
+}
+
+// Load log counts once projects are ready
+watch(() => projects.value.length, (len) => {
+  if (len > 0 && !loadedLogCounts.value) fetchLogCounts()
+}, { immediate: true })
+
 const { setHeader } = usePageHeader()
-setHeader({ title: 'My Open Projects', icon: 'i-lucide-folder-open' })
+setHeader({ title: 'Open Projects', icon: 'i-lucide-folder-open' })
 
 // ─── State ──────────────────────────────────────────────────
 const search = ref('')
@@ -18,7 +55,9 @@ const filesModalProject = ref<any>(null)
 
 function openFilesModal(project: any) {
   filesModalProject.value = project
-  showFilesModal.value = true
+  nextTick(() => {
+    showFilesModal.value = true
+  })
 }
 
 // ─── CRUD state ─────────────────────────────────────────────
@@ -66,20 +105,6 @@ async function confirmDelete() {
 function onProjectSaved() {
   refresh()
 }
-
-// ─── Use global prefetched store ────────────────────────────
-const {
-  projects,
-  userNameMap,
-  customerNameMap,
-  init,
-  refresh,
-} = useDashboardStore()
-init()
-
-// ─── Current user email ─────────────────────────────────────
-const { user: authUser } = useAuth()
-const currentEmail = computed(() => (authUser.value?.email || '').toLowerCase())
 
 // ─── Sorting ────────────────────────────────────────────────
 const sortBy = ref('TimeStamp')
@@ -145,32 +170,63 @@ const columns = [
   { key: 'PTO Received', label: 'PTO Received', width: '100px' },
   { key: 'AHJ', label: 'AHJ', width: '100px' },
   { key: 'Jurisdiction', label: 'Jurisdiction', width: '120px' },
-  { key: 'Project Folder', label: 'Folder', width: '80px' },
+
   { key: 'Create By', label: 'Created By', width: '130px' },
   { key: 'TimeStamp', label: 'Created', width: '110px' },
 ]
 
-// ─── Open statuses ───────────────────────────────────────────
-const OPEN_STATUSES = ['in progress', 'open', 'active', 'new job', 'new']
+// ─── Excluded statuses (case-insensitive) ────────────────────
+const EXCLUDED_STATUSES = ['cancelled', 'closed', 't/s']
 
-function isOpenProject(p: any) {
-  const jobStatus = String(p['Job Status'] || '').toLowerCase()
-  const projectStatus = String(p['Project Status'] || '').toLowerCase()
-  return OPEN_STATUSES.some(s => jobStatus.includes(s) || projectStatus.includes(s))
+// Base-filtered projects (before tab & search)
+const baseProjects = computed(() => {
+  return projects.value.filter((p: any) => {
+    const jobStatus = String(p['Job Status'] || '').toLowerCase()
+    if (EXCLUDED_STATUSES.includes(jobStatus)) return false
+    if (p['TempDeleted'] === true || p['TempDeleted'] === 'true') return false
+    return true
+  })
+})
+
+// ─── Project Status Tabs ────────────────────────────────────
+const activeTab = ref('All')
+
+function getProjectStatuses(p: any): string[] {
+  const raw = String(p['Project Status'] || '').trim()
+  if (!raw) return ['Unknown']
+  return raw.split(',').map((s: string) => s.trim()).filter(Boolean)
 }
 
-function isMyProject(p: any) {
-  if (!currentEmail.value) return true
-  const fields = [
-    'Project Manager', 'Project Manager VA', 'Finance Manager',
-    'Finance Manager VA', 'Engineer', 'Permit Coordinator', 'Create By',
+const projectStatusTabs = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const p of baseProjects.value) {
+    for (const s of getProjectStatuses(p)) {
+      counts[s] = (counts[s] || 0) + 1
+    }
+  }
+  const sorted = Object.entries(counts).sort(([a], [b]) => {
+    if (a === 'Unknown') return 1
+    if (b === 'Unknown') return -1
+    return a.localeCompare(b)
+  })
+  return [
+    { label: 'All', count: baseProjects.value.length },
+    ...sorted.map(([label, count]) => ({ label, count })),
   ]
-  return fields.some(f => String(p[f] || '').toLowerCase() === currentEmail.value)
-}
+})
+
+watch(activeTab, () => { visibleCount.value = CHUNK_SIZE })
 
 // ─── Computed ───────────────────────────────────────────────
 const filteredProjects = computed(() => {
-  let list = projects.value.filter((p: any) => isOpenProject(p) && isMyProject(p))
+  let list = baseProjects.value
+
+  // Tab filter
+  if (activeTab.value !== 'All') {
+    list = list.filter((p: any) => getProjectStatuses(p).includes(activeTab.value))
+  }
+
+  // Search filter
   if (search.value) {
     const q = search.value.toLowerCase()
     list = list.filter((p: any) => {
@@ -191,6 +247,7 @@ const sortedProjects = computed(() => {
   return arr.sort((a, b) => {
     let av = a[col] ?? ''
     let bv = b[col] ?? ''
+    // Handle date objects
     if (av && typeof av === 'object' && av.value) av = av.value
     if (bv && typeof bv === 'object' && bv.value) bv = bv.value
     av = String(av).toLowerCase()
@@ -243,6 +300,7 @@ function formatCurrency(value: any): string {
 function cellValue(row: any, key: string): string {
   const val = row[key]
   if (val === null || val === undefined || val === '') return '—'
+  // Date objects from BigQuery
   if (typeof val === 'object' && val.value) return formatDate(val)
   return String(val)
 }
@@ -256,11 +314,13 @@ function statusColor(status: string) {
   return 'bg-muted text-muted-foreground'
 }
 
+// Resolve email → full name from Users
 function resolveName(email: string): string {
   if (!email) return '—'
   return userNameMap.value[email.toLowerCase()] || email
 }
 
+// Resolve Customer ID → full name from Customers
 function resolveCustomer(project: any): string {
   const id = project['Customer ID']
   if (!id) return '—'
@@ -283,16 +343,20 @@ const dateColumns = [
 ]
 const currencyColumns = ['Project Price', 'Contract Price', 'Project Net Amount']
 
-// ─── Highlight on return ──────────────────────────────────
+// ─── Highlight project on return from detail page ──────────
 const highlightId = ref('')
 const router = useRouter()
 
 function scrollAndHighlight(id: string) {
   highlightId.value = id
+
+  // Expand visibleCount so the target row is in the DOM
   const idx = sortedProjects.value.findIndex((p: any) => p['Project ID'] === id)
   if (idx >= 0 && idx >= visibleCount.value) {
     visibleCount.value = idx + CHUNK_SIZE
   }
+
+  // Inject global keyframe if not already present
   if (!document.getElementById('row-highlight-style')) {
     const style = document.createElement('style')
     style.id = 'row-highlight-style'
@@ -305,6 +369,7 @@ function scrollAndHighlight(id: string) {
     `
     document.head.appendChild(style)
   }
+
   nextTick(() => {
     requestAnimationFrame(() => {
       let retries = 0
@@ -312,6 +377,7 @@ function scrollAndHighlight(id: string) {
         const el = document.getElementById(`project-row-${id}`)
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // Apply inline styles directly — bypasses all scoping issues
           el.style.cssText = [
             'animation: rowHighlightPulse 0.8s ease-in-out 4 !important',
             'background-color: hsla(160,84%,39%,0.12) !important',
@@ -333,10 +399,12 @@ function scrollAndHighlight(id: string) {
   })
 }
 
+// Fires on EVERY navigation, including back — the key fix
 const stopRouterAfter = router.afterEach(() => {
   const id = sessionStorage.getItem('highlight-project')
   if (id) {
     sessionStorage.removeItem('highlight-project')
+    // If data is already loaded, scroll immediately; otherwise wait for it
     if (sortedProjects.value.length > 0) {
       scrollAndHighlight(id)
     }
@@ -352,6 +420,7 @@ const stopRouterAfter = router.afterEach(() => {
 })
 
 onMounted(() => {
+  // Also handle fresh page load (first mount)
   const id = sessionStorage.getItem('highlight-project')
   if (id) {
     sessionStorage.removeItem('highlight-project')
@@ -395,6 +464,27 @@ onUnmounted(() => stopRouterAfter())
         </div>
       </Teleport>
 
+      <!-- Project Status Tabs -->
+      <div class="shrink-0 border-b px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+        <button
+          v-for="tab in projectStatusTabs"
+          :key="tab.label"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all"
+          :class="activeTab === tab.label
+            ? 'bg-primary text-primary-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
+          @click="activeTab = tab.label"
+        >
+          {{ tab.label }}
+          <span
+            class="ml-1 text-[10px] tabular-nums"
+            :class="activeTab === tab.label ? 'opacity-80' : 'opacity-50'"
+          >
+            {{ tab.count }}
+          </span>
+        </button>
+      </div>
+
       <!-- Data Table -->
       <div class="flex-1 min-h-0 overflow-auto">
         <Table>
@@ -412,6 +502,9 @@ onUnmounted(() => stopRouterAfter())
                   <Icon :name="sortIcon(col.key)" class="size-3 opacity-60" />
                 </div>
               </TableHead>
+              <TableHead class="bg-card sticky right-0 z-20 w-[80px] min-w-[80px] shadow-[-2px_0_4px_-2px_hsl(var(--border))]">
+                Actions
+              </TableHead>
             </TableRow>
           </TableHeader>
 
@@ -425,25 +518,22 @@ onUnmounted(() => stopRouterAfter())
               @click="navigateTo(`/projects/${project['Project ID']}`)"
             >
               <TableCell v-for="col in columns" :key="col.key">
-                <!-- Project Folder -->
-                <template v-if="col.key === 'Project Folder'">
-                  <button
-                    v-if="project['Project Folder']"
-                    class="group/folder relative flex items-center justify-center size-8 rounded-lg transition-all duration-200 hover:bg-[#1da462]/10 hover:shadow-sm"
-                    title="View files in Google Drive"
-                    @click.stop="openFilesModal(project)"
-                  >
-                    <svg class="size-5 transition-all duration-200 group-hover/folder:scale-110" viewBox="0 0 24 24" fill="none">
-                      <path d="M4.5 19.5l3-5.25H21l-3 5.25H4.5z" fill="#1da462" opacity=".7" />
-                      <path d="M12 4.5L4.5 17.25l3 2.25L15 7.5 12 4.5z" fill="#1da462" opacity=".85" />
-                      <path d="M21 15l-4.5-7.5L13.5 9l4.5 7.5L21 15z" fill="#1da462" />
-                    </svg>
-                    <span class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-[#34a853] opacity-0 group-hover/folder:opacity-100 transition-opacity" />
-                  </button>
-                  <span v-else class="text-muted-foreground/40">—</span>
-                </template>
 
                 <!-- Status badges -->
+                <template v-if="col.key === 'Project Status'">
+                  <div v-if="project[col.key] && project[col.key] !== '—'" class="flex flex-wrap gap-1">
+                    <Badge
+                      v-for="(s, si) in project[col.key].split(',').map((v: string) => v.trim()).filter(Boolean)"
+                      :key="si"
+                      variant="outline"
+                      :class="statusColor(s)"
+                      class="text-[10px] whitespace-nowrap"
+                    >
+                      {{ s }}
+                    </Badge>
+                  </div>
+                  <span v-else class="text-muted-foreground/40">—</span>
+                </template>
                 <template v-else-if="statusColumns.includes(col.key)">
                   <Badge
                     v-if="project[col.key] && project[col.key] !== '—'"
@@ -470,9 +560,36 @@ onUnmounted(() => stopRouterAfter())
                   </span>
                 </template>
 
-                <!-- Project ID -->
+                <!-- Project ID with Logs & Folder icons -->
                 <template v-else-if="col.key === 'Project ID'">
-                  <span class="font-mono text-xs">{{ project['Project ID'] || '—' }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      class="group/log relative flex items-center justify-center size-6 rounded-md transition-all duration-200 hover:bg-violet-500/10 hover:shadow-sm"
+                      title="View change history"
+                      @click.stop="openLogs(project['Project ID'])"
+                    >
+                      <Icon name="i-lucide-history" class="size-3.5 text-muted-foreground/50 group-hover/log:text-violet-600 dark:group-hover/log:text-violet-400 transition-colors" />
+                      <span
+                        v-if="project['Project ID'] && (logCounts[project['Project ID']] ?? 0) > 0"
+                        class="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-violet-500 text-white text-[8px] font-bold flex items-center justify-center leading-none tabular-nums"
+                      >
+                        {{ (logCounts[project['Project ID']!] ?? 0) > 99 ? '99+' : logCounts[project['Project ID']!] }}
+                      </span>
+                    </button>
+                    <button
+                      v-if="project['Project Folder']"
+                      class="group/folder relative flex items-center justify-center size-7 rounded-lg transition-all duration-200 hover:bg-[#1da462]/15 hover:shadow-md hover:shadow-emerald-500/10"
+                      title="View files in Google Drive"
+                      @click.stop="openFilesModal(project)"
+                    >
+                      <svg class="size-4.5 transition-all duration-200 group-hover/folder:scale-110" viewBox="0 0 24 24" fill="none">
+                        <path d="M4.5 19.5l3-5.25H21l-3 5.25H4.5z" fill="#1da462" opacity=".7" />
+                        <path d="M12 4.5L4.5 17.25l3 2.25L15 7.5 12 4.5z" fill="#1da462" opacity=".85" />
+                        <path d="M21 15l-4.5-7.5L13.5 9l4.5 7.5L21 15z" fill="#1da462" />
+                      </svg>
+                    </button>
+                    <span class="font-mono text-xs">{{ project['Project ID'] || '—' }}</span>
+                  </div>
                 </template>
 
                 <!-- Customer name with avatar -->
@@ -504,21 +621,41 @@ onUnmounted(() => stopRouterAfter())
                   <span class="text-sm whitespace-nowrap">{{ cellValue(project, col.key) }}</span>
                 </template>
               </TableCell>
+
+              <!-- Actions (sticky right) -->
+              <TableCell class="sticky right-0 z-10 bg-card shadow-[-2px_0_4px_-2px_hsl(var(--border))]">
+                <div class="flex items-center gap-1">
+                  <button
+                    class="group/edit flex items-center justify-center size-7 rounded-lg transition-all duration-200 hover:bg-blue-500/10 hover:shadow-sm"
+                    title="Edit project"
+                    @click.stop="openEditForm(project)"
+                  >
+                    <Icon name="i-lucide-pencil" class="size-3.5 text-muted-foreground/50 group-hover/edit:text-blue-600 dark:group-hover/edit:text-blue-400 transition-colors" />
+                  </button>
+                  <button
+                    class="group/del flex items-center justify-center size-7 rounded-lg transition-all duration-200 hover:bg-red-500/10 hover:shadow-sm"
+                    title="Delete project"
+                    @click.stop="openDeleteConfirm(project)"
+                  >
+                    <Icon name="i-lucide-trash-2" class="size-3.5 text-muted-foreground/50 group-hover/del:text-red-500 transition-colors" />
+                  </button>
+                </div>
+              </TableCell>
             </TableRow>
 
             <!-- Empty State -->
             <TableRow v-if="visibleProjects.length === 0">
-              <TableCell :colspan="columns.length" class="h-32 text-center">
+              <TableCell :colspan="columns.length + 1" class="h-32 text-center">
                 <div class="flex flex-col items-center gap-2 text-muted-foreground">
                   <Icon name="i-lucide-folder-open" class="size-8" />
-                  <p>No open projects assigned to you</p>
+                  <p>No open projects found</p>
                 </div>
               </TableCell>
             </TableRow>
 
             <!-- Infinite scroll sentinel -->
             <tr v-if="hasMore" ref="sentinelRef">
-              <td :colspan="columns.length" class="h-10 text-center text-xs text-muted-foreground">
+              <td :colspan="columns.length + 1" class="h-10 text-center text-xs text-muted-foreground">
                 Loading more…
               </td>
             </tr>
@@ -530,6 +667,7 @@ onUnmounted(() => stopRouterAfter())
     <!-- Google Drive Files Modal -->
     <CustomerFilesModal
       v-if="filesModalProject"
+      :key="filesModalProject['Project ID']"
       v-model:open="showFilesModal"
       :customer-name="resolveCustomer(filesModalProject) + ' — ' + (filesModalProject['Project ID'] || '')"
       :drive-link="filesModalProject['Project Folder'] || ''"
@@ -570,10 +708,17 @@ onUnmounted(() => stopRouterAfter())
         </div>
       </DialogContent>
     </Dialog>
+
+    <!-- Project Logs Modal -->
+    <ProjectsLogsModal
+      v-model:open="showLogsModal"
+      :project-id="logsProjectId"
+    />
   </ProjectsLayout>
 </template>
 
 <style scoped>
+/* Override Table.vue's inner overflow-auto wrapper so sticky thead works. */
 :deep([data-slot="table-container"]) {
   overflow: visible !important;
 }
