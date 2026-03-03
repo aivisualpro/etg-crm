@@ -1,7 +1,7 @@
 {
-  "name": "SWSCRM V5 — Enterprise ERP & CRM",
-  "short_name": "SWSCRM V5",
-  "description": "Comprehensive enterprise resource planning and CRM platform — SWSCRM V5",
+  "name": "ETG CRM — Enterprise CRM",
+  "short_name": "ETG CRM",
+  "description": "Comprehensive enterprise CRM platform — ETG CRM",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#09090b",

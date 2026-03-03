@@ -41,8 +41,8 @@ function loginWithGoogle() {
 }
 
 useSeoMeta({
-  title: 'Sign In — SWSCRM V5',
-  description: 'Sign in with your Google account to access the SWSCRM V5 platform.',
+  title: 'Sign In — ETG CRM',
+  description: 'Sign in with your Google account to access the ETG CRM platform.',
 })
 </script>
 
@@ -59,10 +59,10 @@ useSeoMeta({
       <div class="login-brand">
         <div class="login-brand__inner">
           <div class="login-brand__logo">
-            <img src="/logo-192.png" alt="SWS CRM" class="size-12 rounded-xl shadow-lg" />
+            <img src="/logo-192.png" alt="ETG CRM" class="size-12 rounded-xl shadow-lg" />
             <div>
-              <h2 class="text-xl font-bold text-white tracking-tight">SWSCRM V5</h2>
-              <p class="text-sm text-white/60">Enterprise ERP & CRM Platform</p>
+              <h2 class="text-xl font-bold text-white tracking-tight">ETG CRM</h2>
+              <p class="text-sm text-white/60">Enterprise CRM Platform</p>
             </div>
           </div>
 
@@ -72,7 +72,7 @@ useSeoMeta({
                 &ldquo;A comprehensive platform that streamlines every aspect of our business — from CRM to inventory to finance, all in one place.&rdquo;
               </p>
               <footer class="text-sm text-white/50 font-medium">
-                — SWS Management Team
+                — ETG Management Team
               </footer>
             </blockquote>
           </div>
@@ -87,7 +87,7 @@ useSeoMeta({
         <div class="login-form-wrapper">
           <!-- Mobile logo -->
           <div class="login-mobile-logo">
-            <img src="/logo-192.png" alt="SWS CRM" class="size-10 rounded-lg" />
+            <img src="/logo-192.png" alt="ETG CRM" class="size-10 rounded-lg" />
           </div>
 
           <!-- Unauthorized error banner -->
@@ -165,7 +165,7 @@ useSeoMeta({
         <!-- Footer -->
         <div class="login-footer">
           <p class="text-xs text-muted-foreground">
-            &copy; 2026 SWSCRM V5. All rights reserved.
+            &copy; 2026 ETG CRM. All rights reserved.
           </p>
         </div>
       </div>

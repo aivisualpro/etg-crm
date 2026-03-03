@@ -1,14 +1,13 @@
 {
-  "name": "swscrm-v5",
+  "name": "etg-crm",
   "type": "module",
   "version": "1.0.2",
   "packageManager": "pnpm@10.10.0",
-  "description": "SWSCRM V5 — Full Stack ERP & CRM Platform",
+  "description": "ETG CRM — Enterprise CRM Platform",
   "author": "Yosi Nuri <admin@y2kgrouphosting.com>",
   "keywords": [
     "dashboard",
-    "swscrm-v5",
-    "yosi nuri",
+    "etg-crm",
     "full stack erp",
     "admin-dashboard",
     "vue",

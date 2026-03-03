@@ -42,19 +42,19 @@ useHead({
   },
 })
 
-const title = 'SWSCRM V5 — Enterprise ERP & CRM Platform'
-const description = 'A comprehensive enterprise resource planning and CRM platform. SWSCRM V5 — featuring full CRUD, dark mode, BigQuery integration, and multi-module support.'
+const title = 'ETG CRM — Enterprise CRM Platform'
+const description = 'A comprehensive enterprise CRM platform. ETG CRM — featuring full CRUD, dark mode, BigQuery integration, and multi-module support.'
 
 useSeoMeta({
   title,
   description,
   ogTitle: title,
   ogDescription: description,
-  ogUrl: 'http://sws.123crm.net/',
-  ogImage: 'http://sws.123crm.net/logo-512.png',
+  ogUrl: '/',
+  ogImage: '/logo-512.png',
   twitterTitle: title,
   twitterDescription: description,
-  twitterImage: 'http://sws.123crm.net/logo-512.png',
+  twitterImage: '/logo-512.png',
   twitterCard: 'summary_large_image',
 })
 

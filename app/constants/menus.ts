@@ -11,11 +11,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-layout-dashboard',
         link: '/',
       },
-      {
-        title: 'Notifications',
-        icon: 'i-lucide-bell',
-        link: '/notifications',
-      },
     ],
   },
   {
@@ -74,86 +69,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-clipboard-check',
         link: '/permits',
       },
-      {
-        title: 'Document Requests',
-        icon: 'i-lucide-file-search',
-        link: '/document-requests',
-      },
-      {
-        title: 'Finances',
-        icon: 'i-lucide-banknote',
-        link: '/finances',
-      },
-      {
-        title: 'Payments',
-        icon: 'i-lucide-credit-card',
-        link: '/payments',
-      },
-      {
-        title: 'Events',
-        icon: 'i-lucide-calendar-days',
-        children: [
-          {
-            title: 'Events Calendar',
-            link: '/events/calendar',
-          },
-          {
-            title: 'Install Calendar',
-            link: '/events/install-calendar',
-          },
-          {
-            title: 'Tech Calendar',
-            link: '/events/tech-calendar',
-          },
-          {
-            title: 'SSA Calendar',
-            link: '/events/ssa-calendar',
-          },
-          {
-            title: 'Events Dashboard',
-            link: '/events/dashboard',
-          },
-          {
-            title: 'Archive Calendar',
-            link: '/events/archive',
-          },
-          {
-            title: 'Events Without Projects',
-            link: '/events/without-projects',
-          },
-        ],
-      },
-      {
-        title: 'Project Chat',
-        icon: 'i-lucide-message-circle',
-        link: '/project-chats',
-      },
-      {
-        title: 'Tasks',
-        titleKey: 'nav.tasks',
-        icon: 'i-lucide-calendar-check-2',
-        link: '/tasks',
-      },
-      {
-        title: 'Notes',
-        icon: 'i-lucide-sticky-note',
-        link: '/notes',
-      },
-      {
-        title: 'Tickets',
-        icon: 'i-lucide-ticket',
-        link: '/project-tickets',
-      },
-      {
-        title: 'Vendors',
-        icon: 'i-lucide-building-2',
-        link: '/vendors',
-      },
-      {
-        title: 'Sales Reps',
-        icon: 'i-lucide-user-round-search',
-        link: '/sales-reps',
-      },
     ],
   },
   // Kanban Board hidden from sidebar — component preserved at /kanban
@@ -161,16 +76,6 @@ export const navMenu: NavMenu[] = [
     heading: 'Reports',
     headingKey: 'nav.reports',
     items: [
-      {
-        title: 'Finance',
-        icon: 'i-lucide-pie-chart',
-        link: '/reports/financial',
-      },
-      {
-        title: 'RTF',
-        icon: 'i-lucide-badge-dollar-sign',
-        link: '/reports/ready-to-fund',
-      },
       {
         title: 'General',
         icon: 'i-lucide-clipboard-list',
@@ -180,16 +85,6 @@ export const navMenu: NavMenu[] = [
         title: 'PM Weekly',
         icon: 'i-lucide-calendar-range',
         link: '/reports/pm-weekly',
-      },
-      {
-        title: 'Permits',
-        icon: 'i-lucide-stamp',
-        link: '/reports/permit',
-      },
-      {
-        title: 'Document Requested',
-        icon: 'i-lucide-file-search',
-        link: '/reports/documents-requested',
       },
     ],
   },

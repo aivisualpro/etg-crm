@@ -12,13 +12,13 @@ defineProps<{
     <div class="relative hidden h-full flex-1 flex-col bg-muted p-10 text-white lg:flex dark:border-r">
       <div class="absolute inset-0 bg-zinc-900" />
       <div class="relative z-20 flex items-center text-lg font-medium gap-2">
-        <img src="/logo-192.png" alt="SWSCRM V5" class="size-7 rounded-md" />
-        SWSCRM V5
+        <img src="/logo-192.png" alt="ETG CRM" class="size-7 rounded-md" />
+        ETG CRM
       </div>
       <div class="relative z-20 mt-auto">
         <blockquote class="space-y-2">
           <p class="text-lg">
-            &ldquo;SWSCRM V5 has transformed how we manage our entire business — from CRM to inventory to finance, all in one beautiful platform.&rdquo;
+            &ldquo;ETG CRM has transformed how we manage our entire business — a comprehensive CRM platform all in one place.&rdquo;
           </p>
           <footer class="text-sm">
             Yosi Nuri, Founder

@@ -5,7 +5,8 @@ import { toast } from 'vue-sonner'
 const { setHeader } = usePageHeader()
 setHeader({ title: 'General Report', description: 'Project analytics & performance insights', icon: 'i-lucide-clipboard-list' })
 
-const { projects, userNameMap, customerNameMap, salesReps, init } = useDashboardStore()
+const { projects, userNameMap, customerNameMap, init } = useDashboardStore()
+const salesReps = ref<any[]>([])
 init()
 const { user } = useAuth()
 

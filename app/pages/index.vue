@@ -2,12 +2,11 @@
 import NumberFlow from '@number-flow/vue'
 
 const { setHeader } = usePageHeader()
-setHeader({ title: 'Home', icon: 'i-lucide-layout-dashboard', description: 'Overview of your solar operations' })
+setHeader({ title: 'Home', icon: 'i-lucide-layout-dashboard', description: 'Overview of your operations' })
 
 // ─── Use the global prefetched data store ───────────────────
 const {
   projects,
-  events,
   userNameMap,
   customerNameMap,
   init,
@@ -65,11 +64,9 @@ const completedProjects = computed(() => projects.value.filter(p => (p['Job Stat
 // ─── Quick Links ────────────────────────────────────────────
 const quickLinks = computed(() => [
   { label: 'All Projects', count: totalProjects.value, icon: 'i-lucide-folder-kanban', link: '/projects/all-projects', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-  { label: 'Events Calendar', count: events.value.length, icon: 'i-lucide-calendar-days', link: '/events/calendar', color: 'text-violet-500', bg: 'bg-violet-500/10' },
-  { label: 'Project Chat', count: null, icon: 'i-lucide-message-circle', link: '/project-chats', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
   { label: 'Customers', count: Object.keys(customerNameMap.value).length, icon: 'i-lucide-users', link: '/customers', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-  { label: 'Sales Report', count: null, icon: 'i-lucide-trending-up', link: '/reports/sales', color: 'text-pink-500', bg: 'bg-pink-500/10' },
-  { label: 'Financial Report', count: null, icon: 'i-lucide-pie-chart', link: '/reports/financial', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+  { label: 'Permits', count: null, icon: 'i-lucide-clipboard-check', link: '/permits', color: 'text-violet-500', bg: 'bg-violet-500/10' },
+  { label: 'General Report', count: null, icon: 'i-lucide-clipboard-list', link: '/reports/general', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
 ])
 
 // ─── Project status breakdown ───────────────────────────────
@@ -83,20 +80,6 @@ const projectStatusBreakdown = computed(() => {
     .map(([status, count]) => ({ status, count, pct: totalProjects.value > 0 ? ((count / totalProjects.value) * 100).toFixed(1) : '0' }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 6)
-})
-
-// ─── Upcoming Events (next 7 days) ──────────────────────────
-const upcomingEvents = computed(() => {
-  const now = new Date()
-  const weekLater = new Date(now.getTime() + 7 * 86400000)
-  return events.value
-    .map(e => {
-      const d = parseDate(e['Start Date'])
-      return { ...e, _date: d }
-    })
-    .filter(e => e._date && e._date >= now && e._date <= weekLater)
-    .sort((a, b) => a._date!.getTime() - b._date!.getTime())
-    .slice(0, 8)
 })
 
 // ─── Recent Projects (last 14 days) ─────────────────────────
@@ -173,13 +156,6 @@ const notifications = computed(() => {
 
   return items
 })
-
-// event type colors
-const eventColors: Record<string, string> = {
-  Install: 'bg-emerald-500', SSA: 'bg-slate-500', Completion: 'bg-orange-500',
-  'Final Inspection': 'bg-red-500', Service: 'bg-zinc-500', MPU: 'bg-violet-500',
-  'Turn On': 'bg-amber-500', Stucco: 'bg-blue-500', REPAIR: 'bg-pink-500',
-}
 </script>
 
 <template>
@@ -202,7 +178,7 @@ const eventColors: Record<string, string> = {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <NuxtLink
                     v-for="link in quickLinks"
                     :key="link.label"
@@ -324,7 +300,7 @@ const eventColors: Record<string, string> = {
               <CardHeader class="pb-2">
                 <CardTitle class="text-sm font-semibold flex items-center gap-2">
                   <Icon name="i-lucide-bell" class="size-4 text-red-500" />
-                  Notifications
+                  Alerts
                   <Badge class="ml-auto text-[9px] bg-red-500/10 text-red-500 border-red-500/20" variant="outline">
                     {{ notifications.length }}
                   </Badge>
@@ -344,40 +320,6 @@ const eventColors: Record<string, string> = {
                 <div v-if="notifications.length === 0" class="py-6 text-center">
                   <Icon name="i-lucide-check-circle" class="size-8 text-emerald-500/30 mx-auto mb-2" />
                   <p class="text-xs text-muted-foreground">All clear!</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <!-- Upcoming Events -->
-            <Card>
-              <CardHeader class="pb-2">
-                <div class="flex items-center justify-between">
-                  <CardTitle class="text-sm font-semibold flex items-center gap-2">
-                    <Icon name="i-lucide-calendar-days" class="size-4 text-violet-500" />
-                    Upcoming Events
-                  </CardTitle>
-                  <NuxtLink to="/events/calendar" class="text-xs text-primary hover:underline">View all →</NuxtLink>
-                </div>
-              </CardHeader>
-              <CardContent class="space-y-1">
-                <div v-for="(evt, i) in upcomingEvents" :key="i" class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                  <div class="size-2 rounded-full shrink-0" :class="eventColors[evt['Event Type']] || 'bg-primary'" />
-                  <div class="flex-1 min-w-0">
-                    <p class="text-xs font-medium truncate">{{ evt['Event Type'] || 'Event' }}</p>
-                    <p class="text-[10px] text-muted-foreground truncate">{{ evt['Customer Address'] || evt['Event Address'] || '' }}</p>
-                  </div>
-                  <div class="text-right shrink-0">
-                    <p class="text-[10px] font-semibold tabular-nums">
-                      {{ evt._date?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }}
-                    </p>
-                    <p class="text-[9px] text-muted-foreground tabular-nums">
-                      {{ evt._date?.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) }}
-                    </p>
-                  </div>
-                </div>
-                <div v-if="upcomingEvents.length === 0" class="py-6 text-center">
-                  <Icon name="i-lucide-calendar-x" class="size-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p class="text-xs text-muted-foreground">No upcoming events</p>
                 </div>
               </CardContent>
             </Card>

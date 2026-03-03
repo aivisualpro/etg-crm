@@ -3,7 +3,8 @@ const { setHeader } = usePageHeader()
 setHeader({ title: 'PM Weekly Report', icon: 'i-lucide-calendar-range', description: 'Project manager weekly performance report' })
 
 // ─── Store ──────────────────────────────────────────────────
-const { projects, notes, userNameMap, customerNameMap, init, refresh } = useDashboardStore()
+const { projects, userNameMap, customerNameMap, init, refresh } = useDashboardStore()
+const notes = ref<any[]>([])
 init()
 
 const isMounted = ref(false)

@@ -44,33 +44,18 @@ const error = computed(() => store.ready.value && !project.value ? 'Project not 
 const userNameMap = computed(() => ({ ...store.userNameMap.value }))
 const customerNameMap = computed(() => ({ ...store.customerNameMap.value }))
 const salesRepMap = computed(() => {
-  return Object.fromEntries(
-    (store.salesReps.value || []).filter((r: any) => r['Row ID']).map((r: any) => [
-      r['Row ID'],
-      [r['First Name'], r['Last Name']].filter(Boolean).join(' ') || r['Row ID'],
-    ]),
-  )
+  return {} as Record<string, string>
 })
 
-// Project-specific data from store (filtered)
-const projectEvents = computed(() =>
-  (store.events.value || []).filter((e: any) => e['Project ID'] === projectId.value),
-)
-const financeRecords = computed(() =>
-  (store.finance.value || []).filter((f: any) => f['Project ID'] === projectId.value),
-)
-const projectNotes = computed(() =>
-  (store.notes.value || []).filter((n: any) => n.ProjectId === projectId.value || n['Project ID'] === projectId.value),
-)
+// Project-specific data — features removed, return empty arrays
+const projectEvents = computed(() => [] as any[])
+const financeRecords = computed(() => [] as any[])
+const projectNotes = computed(() => [] as any[])
 const projectPermits = computed(() =>
   (store.permits.value || []).filter((p: any) => p['Project ID'] === projectId.value),
 )
-const projectDocuments = computed(() =>
-  (store.documentRequests.value || []).filter((d: any) => d['Project ID'] === projectId.value),
-)
-const projectPayments = computed(() =>
-  (store.payments.value || []).filter((p: any) => p['Project ID'] === projectId.value),
-)
+const projectDocuments = computed(() => [] as any[])
+const projectPayments = computed(() => [] as any[])
 
 // Chat — project-specific, still fetched on demand (not in store)
 const chatMessages = ref<any[]>([])

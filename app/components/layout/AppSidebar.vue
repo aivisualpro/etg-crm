@@ -22,7 +22,7 @@ const teams: {
   plan: string
 }[] = [
   {
-    name: 'SWSCRM V5',
+    name: 'ETG CRM',
     logo: 'i-lucide-gallery-vertical-end',
     plan: 'Enterprise',
   },
