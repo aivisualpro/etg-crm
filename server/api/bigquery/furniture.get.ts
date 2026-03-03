@@ -13,6 +13,8 @@ export default defineEventHandler(async (event) => {
     try {
         const query = getQuery(event)
         const a7 = query.a7 as string || ''
+        const a8 = query.a8 as string || ''
+        const a9 = query.a9 as string || ''
         const page = Math.max(1, Number(query.page) || 1)
         const limit = Math.min(500, Math.max(10, Number(query.limit) || 100))
         const search = (query.search as string || '').trim()
@@ -30,6 +32,16 @@ export default defineEventHandler(async (event) => {
         if (a7) {
             conditions.push('A7 = @a7')
             params.a7 = a7
+        }
+
+        if (a8) {
+            conditions.push('A8 = @a8')
+            params.a8 = a8
+        }
+
+        if (a9) {
+            conditions.push('A9 = @a9')
+            params.a9 = a9
         }
 
         if (search) {

@@ -223,3 +223,39 @@ button,
 [type="button"] {
   @apply cursor-pointer;
 }
+
+/* ─── Premium scrollbar styling ──────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.7 0 0 / 25%);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.6 0 0 / 40%);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.4 0 0 / 30%);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.5 0 0 / 50%);
+}
+
+/* ─── GPU-accelerated transitions ────────────────────────── */
+[data-slot="card"] {
+  will-change: transform, box-shadow;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Subtle focus ring enhancement ──────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}

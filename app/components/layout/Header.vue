@@ -60,7 +60,9 @@ const displayDescription = computed(() => {
     </div>
 
     <!-- Teleport target for page-specific toolbar -->
-    <div id="header-toolbar" class="flex-1 flex items-center justify-end gap-2 min-w-0" />
+    <div id="header-toolbar" class="flex-1 flex items-center justify-end gap-2 min-w-0">
+      <LayoutSyncProgress />
+    </div>
 
     <div class="flex items-center gap-2 shrink-0">
       <slot />

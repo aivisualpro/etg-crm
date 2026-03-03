@@ -34,23 +34,40 @@ export default defineEventHandler(async (event) => {
     const name = profile.name || ''
     const picture = profile.picture || ''
 
-    // ── Check if user exists in the Users table ──
-    const checkSql = `SELECT Email FROM \`flutter-5e2fd.etg_database.Users\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
-    const existingRows = await queryBigQuery(checkSql, { email })
+    // ── Super admin bypass — always allowed to sign in ──
+    const SUPER_ADMINS = ['admin@aivisualpro.com']
+    const isSuperAdmin = SUPER_ADMINS.includes(email.toLowerCase())
 
-    if (existingRows.length === 0) {
-      // User NOT in the system — redirect back to login with an error
-      const errorMsg = encodeURIComponent(email)
-      return sendRedirect(event, `/login?error=unauthorized&email=${errorMsg}`)
+    if (!isSuperAdmin) {
+      // ── Check if user exists in the etgUsers table ──
+      try {
+        const { bigquery: bqConfig } = useRuntimeConfig()
+        const dataset = bqConfig.dataset || 'etg_database'
+        const project = bqConfig.projectId || 'flutter-5e2fd'
+
+        const checkSql = `SELECT Email FROM \`${project}.${dataset}.etgUsers\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
+        const existingRows = await queryBigQuery(checkSql, { email })
+
+        if (existingRows.length === 0) {
+          // User NOT in the system — redirect back to login with an error
+          const errorMsg = encodeURIComponent(email)
+          return sendRedirect(event, `/login?error=unauthorized&email=${errorMsg}`)
+        }
+
+        // ── User exists — update Status = TRUE ──
+        const updateSql = `
+          UPDATE \`${project}.${dataset}.etgUsers\`
+          SET Status = TRUE
+          WHERE LOWER(Email) = LOWER(@email)
+        `
+        await queryBigQuery(updateSql, { email })
+      }
+      catch (err: unknown) {
+        console.error('[Auth] User lookup failed:', err)
+        const errorMsg = encodeURIComponent(email)
+        return sendRedirect(event, `/login?error=unauthorized&email=${errorMsg}`)
+      }
     }
-
-    // ── User exists — update Status = TRUE ──
-    const updateSql = `
-      UPDATE \`flutter-5e2fd.etg_database.Users\`
-      SET Status = TRUE
-      WHERE LOWER(Email) = LOWER(@email)
-    `
-    await queryBigQuery(updateSql, { email })
 
     // ── Set auth cookie ──
     setCookie(event, 'auth_user', JSON.stringify({
