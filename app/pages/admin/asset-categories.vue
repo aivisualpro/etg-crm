@@ -2,53 +2,50 @@
 import { toast } from 'vue-sonner'
 
 const { setHeader } = usePageHeader()
-setHeader({ title: 'Entities', icon: 'i-lucide-building-2', description: 'Manage organizational levels' })
+setHeader({ title: 'Asset Categories', icon: 'i-lucide-tags', description: 'Manage asset categories and subcategories' })
 
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
 
 // ─── State ──────────────────────────────────────────────────
-const activeTab = ref('level1')
+const activeTab = ref('categories')
 const search = ref('')
 const syncing = ref(false)
 const loading = ref(true)
 
-const level1 = ref<any[]>([])
-const level2 = ref<any[]>([])
-const level3 = ref<any[]>([])
+const categories = ref<any[]>([])
+const subCategories = ref<any[]>([])
 
 // ─── Fetch data ─────────────────────────────────────────────
-async function fetchLevels() {
+async function fetchData() {
   loading.value = true
   try {
     const data = await $fetch<{
       success: boolean
-      level1: any[]
-      level2: any[]
-      level3: any[]
-    }>('/api/bigquery/levels')
+      categories: any[]
+      subCategories: any[]
+    }>('/api/bigquery/asset-categories')
     if (data.success) {
-      level1.value = data.level1
-      level2.value = data.level2
-      level3.value = data.level3
+      categories.value = data.categories
+      subCategories.value = data.subCategories
     }
   }
   catch (e: any) {
-    toast.error('Failed to load entities')
+    toast.error('Failed to load asset categories')
   }
   finally {
     loading.value = false
   }
 }
-fetchLevels()
+fetchData()
 
 // ─── Sync from AppSheet ─────────────────────────────────────
-async function syncLevels() {
+async function syncData() {
   syncing.value = true
   try {
     const data = await $fetch<{ success: boolean, message: string }>('/api/bigquery/sync-levels', { method: 'POST' })
     toast.success(data.message || 'Synced successfully')
-    await fetchLevels()
+    await fetchData()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Sync failed')
@@ -60,49 +57,33 @@ async function syncLevels() {
 
 // ─── Tabs ───────────────────────────────────────────────────
 const tabs = computed(() => [
-  { key: 'level1', label: 'Level 1', count: level1.value.length, icon: 'i-lucide-map-pin' },
-  { key: 'level2', label: 'Level 2', count: level2.value.length, icon: 'i-lucide-building' },
-  { key: 'level3', label: 'Level 3', count: level3.value.length, icon: 'i-lucide-map' },
+  { key: 'categories', label: 'Categories', count: categories.value.length, icon: 'i-lucide-tag' },
+  { key: 'subCategories', label: 'Sub Categories', count: subCategories.value.length, icon: 'i-lucide-tags' },
 ])
 
 // ─── Column definitions per tab ─────────────────────────────
-const level1Columns = [
-  { key: 'logo', label: 'Logo', width: '60px' },
+const categoryColumns = [
   { key: 'eng', label: 'Name (English)', width: '200px' },
   { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
-  { key: 'A276', label: 'Verified', width: '100px' },
-  { key: 'A15', label: 'Activity Report', width: '120px' },
-  { key: 'Related_level2s', label: 'Related Level 2', width: '200px' },
+  { key: 'Related_SubCategories', label: 'Related Sub Categories', width: '300px' },
 ]
 
-const level2Columns = [
+const subCategoryColumns = [
+  { key: 'image_url', label: 'Image', width: '60px' },
   { key: 'eng', label: 'Name (English)', width: '200px' },
   { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
-  { key: 'A7', label: 'Level 1', width: '160px' },
-  { key: 'Manager_Name', label: 'Manager', width: '160px' },
-  { key: 'A276', label: 'Verified', width: '100px' },
-  { key: 'Related_Level3s', label: 'Related Level 3', width: '200px' },
-]
-
-const level3Columns = [
-  { key: 'eng', label: 'Name (English)', width: '200px' },
-  { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
-  { key: 'A7', label: 'Level 1', width: '160px' },
-  { key: 'A8', label: 'Level 2', width: '160px' },
-  { key: 'A276', label: 'Verified', width: '100px' },
-  { key: 'Counts', label: 'Asset Counts', width: '220px' },
+  { key: 'A51_label', label: 'Category', width: '160px' },
+  { key: 'Level_1', label: 'Level 1', width: '200px' },
 ]
 
 const currentColumns = computed(() => {
-  if (activeTab.value === 'level1') return level1Columns
-  if (activeTab.value === 'level2') return level2Columns
-  return level3Columns
+  if (activeTab.value === 'categories') return categoryColumns
+  return subCategoryColumns
 })
 
 const currentData = computed(() => {
-  if (activeTab.value === 'level1') return level1.value
-  if (activeTab.value === 'level2') return level2.value
-  return level3.value
+  if (activeTab.value === 'categories') return categories.value
+  return subCategories.value
 })
 
 // ─── Sorting ────────────────────────────────────────────────
@@ -110,11 +91,13 @@ const sortBy = ref('eng')
 const sortDir = ref<'asc' | 'desc'>('asc')
 
 function toggleSort(col: string) {
+  if (col === 'image_url') return
   if (sortBy.value === col) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else { sortBy.value = col; sortDir.value = 'asc' }
 }
 
 function sortIcon(col: string) {
+  if (col === 'image_url') return ''
   if (sortBy.value !== col) return 'i-lucide-chevrons-up-down'
   return sortDir.value === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
 }
@@ -168,27 +151,18 @@ onMounted(() => {
 })
 
 // ─── Helpers ────────────────────────────────────────────────
-function cellValue(row: any, key: string): string {
-  const val = row[key]
-  if (val === null || val === undefined || val === '') return '—'
-  return String(val)
-}
-
-function verifiedColor(val?: string) {
-  const s = (val || '').toLowerCase()
-  if (s === 'true' || s === 'verified' || s === 'yes') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-  if (s === 'false' || s === 'no') return 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-  return 'bg-muted text-muted-foreground'
-}
-
-function logoUrl(row: any): string {
-  // image_url stores a GCS path like "images/etgLevel1/A6/image.png"
-  // Serve via the /api/gcs/ proxy (bucket is private)
+function imageUrl(row: any): string {
   if (row.image_url && typeof row.image_url === 'string') {
     if (row.image_url.startsWith('http')) return row.image_url
     return `/api/gcs/${row.image_url}`
   }
   return ''
+}
+
+function cellValue(row: any, key: string): string {
+  const val = row[key]
+  if (val === null || val === undefined || val === '') return '—'
+  return String(val)
 }
 </script>
 
@@ -199,12 +173,12 @@ function logoUrl(row: any): string {
       <div class="flex items-center gap-2 w-full justify-end">
         <div class="relative max-w-[220px]">
           <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input v-model="search" placeholder="Search entities..." class="pl-8 h-8 text-sm" />
+          <Input v-model="search" placeholder="Search..." class="pl-8 h-8 text-sm" />
         </div>
         <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
           {{ filteredRows.length }} record{{ filteredRows.length !== 1 ? 's' : '' }}
         </p>
-        <Button variant="ghost" size="sm" class="h-8" :disabled="syncing" @click="syncLevels()">
+        <Button variant="ghost" size="sm" class="h-8" :disabled="syncing" @click="syncData()">
           <Icon
             name="i-lucide-refresh-cw"
             class="size-3.5"
@@ -241,7 +215,7 @@ function logoUrl(row: any): string {
     <div v-if="loading" class="flex-1 flex items-center justify-center">
       <div class="flex flex-col items-center gap-3 text-muted-foreground">
         <Icon name="i-lucide-loader-2" class="size-8 animate-spin" />
-        <p class="text-sm">Loading entities...</p>
+        <p class="text-sm">Loading asset categories...</p>
       </div>
     </div>
 
@@ -253,13 +227,14 @@ function logoUrl(row: any): string {
             <TableHead
               v-for="col in currentColumns"
               :key="col.key"
-              class="bg-card cursor-pointer select-none whitespace-nowrap"
+              class="bg-card whitespace-nowrap"
+              :class="col.key !== 'image_url' ? 'cursor-pointer select-none' : ''"
               :style="{ minWidth: col.width }"
               @click="toggleSort(col.key)"
             >
               <div class="flex items-center gap-1">
                 {{ col.label }}
-                <Icon :name="sortIcon(col.key)" class="size-3 opacity-60" />
+                <Icon v-if="sortIcon(col.key)" :name="sortIcon(col.key)" class="size-3 opacity-60" />
               </div>
             </TableHead>
           </TableRow>
@@ -268,31 +243,31 @@ function logoUrl(row: any): string {
         <TableBody>
           <TableRow
             v-for="(row, idx) in visibleRows"
-            :key="row.A7 || row.A8 || row.A9 || idx"
+            :key="row.A51 || row.A66 || idx"
             class="group"
           >
             <TableCell v-for="col in currentColumns" :key="col.key">
-              <!-- Logo image (Level 1 only) -->
-              <template v-if="col.key === 'logo'">
-                <div class="size-8 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
+              <!-- Image thumbnail -->
+              <template v-if="col.key === 'image_url'">
+                <div class="size-8 rounded-md overflow-hidden bg-muted flex items-center justify-center">
                   <img
-                    v-if="logoUrl(row)"
-                    :src="logoUrl(row)"
+                    v-if="imageUrl(row)"
+                    :src="imageUrl(row)"
                     :alt="row.eng"
-                    class="size-8 object-contain"
-                    @error="($event.target as HTMLImageElement).style.display = 'none'"
-                  />
-                  <Icon v-else name="i-lucide-image" class="size-4 text-muted-foreground/40" />
+                    class="size-8 object-cover"
+                    loading="lazy"
+                  >
+                  <Icon v-else name="i-lucide-image-off" class="size-3.5 text-muted-foreground/40" />
                 </div>
               </template>
 
               <!-- Name (English) with icon -->
               <template v-else-if="col.key === 'eng'">
                 <div class="flex items-center gap-2">
-                  <div v-if="activeTab !== 'level1'" class="size-7 rounded-lg bg-gradient-to-br from-blue-500/10 to-violet-500/10 flex items-center justify-center shrink-0">
+                  <div class="size-7 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 flex items-center justify-center shrink-0">
                     <Icon
-                      :name="activeTab === 'level2' ? 'i-lucide-building' : 'i-lucide-map'"
-                      class="size-3.5 text-blue-600 dark:text-blue-400"
+                      :name="activeTab === 'categories' ? 'i-lucide-tag' : 'i-lucide-tags'"
+                      class="size-3.5 text-amber-600 dark:text-amber-400"
                     />
                   </div>
                   <span class="font-medium">{{ row.eng || '—' }}</span>
@@ -304,26 +279,10 @@ function logoUrl(row: any): string {
                 <span dir="rtl" class="text-sm text-muted-foreground">{{ row.arabic || '—' }}</span>
               </template>
 
-              <!-- Verified badge -->
-              <template v-else-if="col.key === 'A276'">
-                <Badge v-if="row.A276" variant="outline" :class="verifiedColor(row.A276)" class="text-[10px]">
-                  {{ row.A276 === 'true' || row.A276 === 'Verified' ? 'Verified' : row.A276 }}
-                </Badge>
-                <span v-else class="text-muted-foreground/40">—</span>
-              </template>
-
-              <!-- Level 1 reference (show resolved label if available) -->
-              <template v-else-if="col.key === 'A7' && activeTab !== 'level1'">
-                <Badge v-if="row.A7_label || row.A7" variant="outline" class="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]">
-                  {{ row.A7_label || row.A7 }}
-                </Badge>
-                <span v-else class="text-muted-foreground/40">—</span>
-              </template>
-
-              <!-- Level 2 reference -->
-              <template v-else-if="col.key === 'A8' && activeTab === 'level3'">
-                <Badge v-if="row.A8_label || row.A8" variant="outline" class="bg-violet-500/10 text-violet-600 border-violet-500/20 text-[10px]">
-                  {{ row.A8_label || row.A8 }}
+              <!-- Category badge -->
+              <template v-else-if="col.key === 'A51_label'">
+                <Badge v-if="row.A51_label" variant="outline" class="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px]">
+                  {{ row.A51_label }}
                 </Badge>
                 <span v-else class="text-muted-foreground/40">—</span>
               </template>
@@ -340,7 +299,7 @@ function logoUrl(row: any): string {
             <TableCell :colspan="currentColumns.length" class="h-32 text-center">
               <div class="flex flex-col items-center gap-2 text-muted-foreground">
                 <Icon name="i-lucide-inbox" class="size-8" />
-                <p>No entities found</p>
+                <p>No asset categories found</p>
               </div>
             </TableCell>
           </TableRow>

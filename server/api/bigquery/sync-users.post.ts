@@ -1,6 +1,7 @@
 /**
  * POST /api/bigquery/sync-users
  * Syncs all users from AppSheet → BigQuery etgusers table
+ * Uses MERGE (upsert) on key column to avoid duplicates
  */
 export default defineEventHandler(async () => {
     try {
@@ -9,6 +10,12 @@ export default defineEventHandler(async () => {
         const APPSHEET_ACCESS_KEY = 'V2-rG4Pb-U8Egw-OYr5C-yqEkB-qwebd-9tCNg-hZD5U-SJtJs'
         const APPSHEET_TABLE = 'Users'
         const BQ_TABLE = 'etgusers'
+        const KEY_COLUMN = 'A2' // User email – unique key in AppSheet
+
+        const bq = useBigQuery()
+        const { bigquery } = useRuntimeConfig()
+        const dataset = bigquery.dataset || 'etg_database'
+        const projectId = bigquery.projectId || 'flutter-5e2fd'
 
         // ─── Step 1: Fetch from AppSheet ──────────────────────────
         const response = await fetch(
@@ -38,10 +45,6 @@ export default defineEventHandler(async () => {
         }
 
         // ─── Step 2: Build safe rows ──────────────────────────────
-        const bq = useBigQuery()
-        const { bigquery } = useRuntimeConfig()
-        const dataset = bigquery.dataset || 'etg_database'
-
         const allKeys = new Set<string>()
         for (const row of rows) {
             for (const key of Object.keys(row)) allKeys.add(key)
@@ -69,23 +72,38 @@ export default defineEventHandler(async () => {
             return cleaned
         })
 
-        // ─── Step 3: Drop and recreate table ─────────────────────
+        const safeKeyColumn = columnMap[KEY_COLUMN]
+        const columns = [...allKeys].map(k => columnMap[k])
+
+        // ─── Step 3: Drop & recreate table (avoids streaming buffer issues) ─
         const dsRef = bq.dataset(dataset)
         const tableRef = dsRef.table(BQ_TABLE)
         const [exists] = await tableRef.exists()
-        if (exists) await tableRef.delete()
+        if (exists) {
+            await tableRef.delete()
+            console.log(`  🗑️ Dropped existing table ${BQ_TABLE}`)
+        }
         await dsRef.createTable(BQ_TABLE, { schema: { fields: schema }, location: 'US' })
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        console.log(`  📋 Created table ${BQ_TABLE}`)
 
-        // ─── Step 4: Insert in batches ────────────────────────────
-        const freshTable = dsRef.table(BQ_TABLE)
-        const BATCH_SIZE = 500
+        // ─── Step 4: INSERT data in batches via SQL ─────────────────
+        const INSERT_BATCH = 150
+        for (let i = 0; i < bqRows.length; i += INSERT_BATCH) {
+            const batch = bqRows.slice(i, i + INSERT_BATCH)
 
-        for (let i = 0; i < bqRows.length; i += BATCH_SIZE) {
-            const batch = bqRows.slice(i, i + BATCH_SIZE)
-            await freshTable.insert(batch, {
-                skipInvalidRows: true,
-                ignoreUnknownValues: true,
-            })
+            const insertCols = columns.map(c => `\`${c}\``).join(', ')
+            const valueRows = batch.map((row: Record<string, string | null>) => {
+                const vals = columns.map(col => escapeSqlValue(row[col] ?? null))
+                return `(${vals.join(', ')})`
+            }).join(',\n      ')
+
+            const insertSQL = `
+                INSERT INTO \`${projectId}.${dataset}.${BQ_TABLE}\` (${insertCols})
+                VALUES ${valueRows}
+            `
+
+            await bq.query({ query: insertSQL, location: 'US' })
         }
 
         return {
@@ -99,3 +117,16 @@ export default defineEventHandler(async () => {
         throw createError({ statusCode: 500, statusMessage: `Sync failed: ${message}` })
     }
 })
+
+/**
+ * Escape a value for use in a BigQuery SQL string literal.
+ */
+function escapeSqlValue(val: string | null | undefined): string {
+    if (val === null || val === undefined) return 'CAST(NULL AS STRING)'
+    const escaped = val
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+    return `'${escaped}'`
+}

@@ -1,39 +1,39 @@
 /**
  * POST /api/bigquery/sync-levels
  * Syncs level1, level2, level3 from AppSheet → BigQuery
- * Also uploads level1 logo images to Cloud Storage
+ * Drops & recreates tables, then INSERTs fresh data (avoids streaming buffer issues)
+ * Copies level1 logo images from Google Drive → GCS
  */
 export default defineEventHandler(async () => {
     try {
         const APPSHEET_APP_ID = 'b7510e79-c7cf-416c-9b6c-4ee4247538c5'
         const APPSHEET_ACCESS_KEY = 'V2-rG4Pb-U8Egw-OYr5C-yqEkB-qwebd-9tCNg-hZD5U-SJtJs'
-        const GCS_BUCKET = 'etg-crm-assets'
+        const GCS_BUCKET = 'etg-storage'
 
         const bq = useBigQuery()
         const { bigquery } = useRuntimeConfig()
         const dataset = bigquery.dataset || 'etg_database'
         const projectId = bigquery.projectId || 'flutter-5e2fd'
 
-        // Ensure GCS bucket exists
-        try {
-            await ensureBucketExists(GCS_BUCKET)
-        }
-        catch (e: any) {
-            console.warn('GCS bucket setup warning:', e.message)
-        }
-
+        // Each table with its AppSheet key column
+        // imageColumn: AppSheet column containing file paths (e.g. 'logo', 'Image')
+        // imageDriveFolder: folder name in Google Drive that holds the images
+        // excludeColumns: virtual/computed AppSheet columns to skip
         const tables = [
-            { appsheet: 'level1', bqTable: 'etgLevel1', hasLogo: true },
-            { appsheet: 'level2', bqTable: 'etgLevel2', hasLogo: false },
-            { appsheet: 'level3', bqTable: 'etgLevel3', hasLogo: false },
+            { appsheet: 'level1', bqTable: 'etgLevel1', keyColumn: 'A7', imageColumn: 'logo', imageDriveFolder: 'level1_Images', excludeColumns: [] as string[] },
+            { appsheet: 'level2', bqTable: 'etgLevel2', keyColumn: 'A8', imageColumn: '', imageDriveFolder: '', excludeColumns: [] as string[] },
+            { appsheet: 'level3', bqTable: 'etgLevel3', keyColumn: 'A9', imageColumn: '', imageDriveFolder: '', excludeColumns: [] as string[] },
+            { appsheet: 'Asset Category', bqTable: 'etgAssetCategory', keyColumn: 'A51', imageColumn: '', imageDriveFolder: '', excludeColumns: ['Label', 'Related SubCategories'] },
+            { appsheet: 'SubCategories', bqTable: 'etgSubCategories', keyColumn: 'A66', imageColumn: 'Image', imageDriveFolder: 'SubCategories_Images', excludeColumns: ['_RowNumber', 'Label', 'Related Equipments', 'Related Vehicles', 'Related Furnitures'] },
+            { appsheet: 'Asset Description', bqTable: 'etgAssetDescription', keyColumn: 'A67', imageColumn: 'Image', imageDriveFolder: 'Asset Description_Images', excludeColumns: ['_RowNumber', 'Label', 'Related Equipments', 'Related Vehicles', 'Related Furnitures'] },
         ]
 
-        const results: Record<string, number> = {}
+        const results: Record<string, { total: number, created: number, updated: number, deleted: number }> = {}
 
-        for (const { appsheet, bqTable, hasLogo } of tables) {
-            // Fetch from AppSheet
+        for (const { appsheet, bqTable, keyColumn, imageColumn, imageDriveFolder, excludeColumns } of tables) {
+            // ─── Step 1: Fetch from AppSheet ─────────────────────────
             const response = await fetch(
-                `https://api.appsheet.com/api/v2/apps/${APPSHEET_APP_ID}/tables/${appsheet}/Action`,
+                `https://api.appsheet.com/api/v2/apps/${APPSHEET_APP_ID}/tables/${encodeURIComponent(appsheet)}/Action`,
                 {
                     method: 'POST',
                     headers: {
@@ -54,57 +54,91 @@ export default defineEventHandler(async () => {
 
             const rows = await response.json()
             if (rows.length === 0) {
-                results[bqTable] = 0
+                results[bqTable] = { total: 0, created: 0, updated: 0, deleted: 0 }
                 continue
             }
 
-            // Upload logo images for level1
-            if (hasLogo) {
+            // ─── Step 2: Copy images from Google Drive → GCS ─────────
+            if (imageColumn && imageDriveFolder) {
+                const drive = useDrive()
+                const { uploadToGCS } = await import('../../utils/gcs')
+
+                const ETG_FOLDER_ID = '11VajRLFO1YtFjalXkYnzJ8F75gZ1hdHJ'
+                const folderRes = await drive.files.list({
+                    q: `'${ETG_FOLDER_ID}' in parents and name = '${imageDriveFolder}' and mimeType = 'application/vnd.google-apps.folder'`,
+                    fields: 'files(id)',
+                    supportsAllDrives: true,
+                    includeItemsFromAllDrives: true,
+                })
+                const imagesFolderId = folderRes.data.files?.[0]?.id
+                if (!imagesFolderId) {
+                    console.warn(`  ⚠️ ${imageDriveFolder} folder not found in Drive`)
+                }
+
+                let driveFiles: Array<{ id: string, name: string, mimeType: string }> = []
+                if (imagesFolderId) {
+                    const filesRes = await drive.files.list({
+                        q: `'${imagesFolderId}' in parents`,
+                        pageSize: 1000,
+                        fields: 'files(id, name, mimeType)',
+                        supportsAllDrives: true,
+                        includeItemsFromAllDrives: true,
+                    })
+                    driveFiles = (filesRes.data.files || []) as typeof driveFiles
+                    console.log(`  📂 Found ${driveFiles.length} files in ${imageDriveFolder}`)
+                }
+
                 for (const row of rows) {
-                    if (row.logo && typeof row.logo === 'string' && row.logo.trim()) {
-                        try {
-                            // Download image from AppSheet using v2 File API
-                            const fileName = row.logo
-                            const imageUrl = `https://api.appsheet.com/api/v2/apps/${APPSHEET_APP_ID}/tables/${appsheet}/column/logo/file/${encodeURIComponent(fileName)}`
-                            const controller = new AbortController()
-                            const timeout = setTimeout(() => controller.abort(), 10_000)
+                    const imgPath = row[imageColumn]
+                    if (!imgPath || typeof imgPath !== 'string' || !imgPath.trim()) continue
 
-                            const imgResponse = await fetch(imageUrl, {
-                                headers: { 'ApplicationAccessKey': APPSHEET_ACCESS_KEY },
-                                signal: controller.signal,
-                            })
-                            clearTimeout(timeout)
+                    const entityId = row[keyColumn]
+                    if (!entityId) continue
 
-                            if (imgResponse.ok) {
-                                const imgBuffer = new Uint8Array(await imgResponse.arrayBuffer())
-                                if (imgBuffer.length > 0) {
-                                    const ext = fileName.split('.').pop() || 'png'
-                                    const contentType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`
-                                    const gcsPath = `logos/${bqTable}/${row.A7 || row._RowNumber}.${ext}`
+                    const imgFileName = imgPath.split('/').pop()
+                    if (!imgFileName) continue
 
-                                    const publicUrl = await uploadToGCS(GCS_BUCKET, gcsPath, imgBuffer, contentType)
-                                    row.logo_url = publicUrl
-                                    console.log(`  ✅ Logo uploaded: ${row.eng} → ${publicUrl}`)
-                                }
-                            }
-                            else {
-                                console.warn(`  ⚠️ AppSheet returned ${imgResponse.status} for ${row.eng} logo`)
-                            }
+                    const driveFile = driveFiles.find(f => f.name === imgFileName)
+                    if (!driveFile) {
+                        console.warn(`  ⚠️ Image not found in Drive: ${imgFileName} (${row.eng || entityId})`)
+                        continue
+                    }
+
+                    try {
+                        const downloadRes = await drive.files.get(
+                            { fileId: driveFile.id, alt: 'media' },
+                            { responseType: 'arraybuffer' },
+                        )
+                        const imgBuffer = new Uint8Array(downloadRes.data as ArrayBuffer)
+
+                        if (imgBuffer.length > 0) {
+                            const ext = imgFileName.split('.').pop() || 'png'
+                            const contentType = driveFile.mimeType || (ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`)
+                            const gcsPath = `images/${bqTable}/${entityId}/image.${ext}`
+
+                            await uploadToGCS(GCS_BUCKET, gcsPath, imgBuffer, contentType)
+                            row.image_url = gcsPath
+                            console.log(`  ✅ Image: ${row.eng || entityId} → ${gcsPath}`)
                         }
-                        catch (e: any) {
-                            console.warn(`  ⚠️ Logo upload failed for ${row.eng || row.A7}:`, e.message)
-                        }
+                    }
+                    catch (e: any) {
+                        console.warn(`  ⚠️ Image copy failed for ${row.eng || entityId}: ${e.message}`)
                     }
                 }
             }
 
-            // Build safe rows & schema
+            // ─── Step 3: Build safe column names & rows ─────────────
             const allKeys = new Set<string>()
             for (const row of rows) {
                 for (const key of Object.keys(row)) allKeys.add(key)
             }
-            if (hasLogo) allKeys.add('logo_url')
+            if (imageColumn) allKeys.add('image_url')
+            // Remove virtual/excluded columns
+            for (const col of excludeColumns) {
+                allKeys.delete(col)
+            }
 
+            // Sanitize column names (BQ-safe)
             const columnMap: Record<string, string> = {}
             for (const key of allKeys) {
                 columnMap[key] = key.replace(/[^a-zA-Z0-9_]/g, '_')
@@ -127,30 +161,53 @@ export default defineEventHandler(async () => {
                 return cleaned
             })
 
-            // Drop and recreate table (avoids streaming buffer conflict)
+            const safeKeyColumn = columnMap[keyColumn]
+            const columns = [...allKeys].map(k => columnMap[k])
+
+            // ─── Step 4: Drop & recreate table (avoids streaming buffer issues) ─
             const dsRef = bq.dataset(dataset)
             const tableRef = dsRef.table(bqTable)
             const [exists] = await tableRef.exists()
-            if (exists) await tableRef.delete()
+            if (exists) {
+                await tableRef.delete()
+                console.log(`  🗑️ Dropped existing table ${bqTable}`)
+            }
             await dsRef.createTable(bqTable, { schema: { fields: schema }, location: 'US' })
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            console.log(`  📋 Created table ${bqTable}`)
 
-            // Insert in batches
-            const freshTable = dsRef.table(bqTable)
-            const BATCH_SIZE = 500
-            for (let i = 0; i < bqRows.length; i += BATCH_SIZE) {
-                await freshTable.insert(bqRows.slice(i, i + BATCH_SIZE), {
-                    skipInvalidRows: true,
-                    ignoreUnknownValues: true,
-                })
+            // ─── Step 5: INSERT data in batches via SQL ──────────────
+            const INSERT_BATCH = 150
+            for (let i = 0; i < bqRows.length; i += INSERT_BATCH) {
+                const batch = bqRows.slice(i, i + INSERT_BATCH)
+
+                const insertCols = columns.map(c => `\`${c}\``).join(', ')
+                const valueRows = batch.map((row: Record<string, string | null>) => {
+                    const vals = columns.map(col => escapeSqlValue(row[col] ?? null))
+                    return `(${vals.join(', ')})`
+                }).join(',\n      ')
+
+                const insertSQL = `
+                    INSERT INTO \`${projectId}.${dataset}.${bqTable}\` (${insertCols})
+                    VALUES ${valueRows}
+                `
+
+                await bq.query({ query: insertSQL, location: 'US' })
             }
 
-            results[bqTable] = bqRows.length
+            results[bqTable] = {
+                total: bqRows.length,
+                created: bqRows.length,
+                updated: 0,
+                deleted: 0,
+            }
+            console.log(`  ✅ ${bqTable}: inserted ${bqRows.length} rows`)
         }
 
-        const total = Object.values(results).reduce((a, b) => a + b, 0)
+        const total = Object.values(results).reduce((a, b) => a + b.total, 0)
         return {
             success: true,
-            message: `Synced ${total} rows across 3 level tables`,
+            message: `Synced ${total} rows across ${Object.keys(results).length} tables`,
             details: results,
         }
     }
@@ -159,3 +216,18 @@ export default defineEventHandler(async () => {
         throw createError({ statusCode: 500, statusMessage: `Sync levels failed: ${message}` })
     }
 })
+
+/**
+ * Escape a value for use in a BigQuery SQL string literal.
+ * Returns NULL for null/undefined, otherwise a properly quoted string.
+ */
+function escapeSqlValue(val: string | null | undefined): string {
+    if (val === null || val === undefined) return 'CAST(NULL AS STRING)'
+    // BigQuery uses backslash escaping (not doubled quotes)
+    const escaped = val
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+    return `'${escaped}'`
+}
