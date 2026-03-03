@@ -37,7 +37,7 @@ export function useBigQuery(): BigQuery {
  */
 export function useBigQueryDataset() {
   const { bigquery } = useRuntimeConfig()
-  const datasetName = bigquery.dataset || 'SWSCRMV4'
+  const datasetName = bigquery.dataset || 'etg_database'
   return useBigQuery().dataset(datasetName)
 }
 

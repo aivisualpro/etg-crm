@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     }
 
     try {
-        const sql = `SELECT * FROM \`appsheet-417200.SWSCRMV4.ProjectLogs\` WHERE \`Project ID\` = '${projectId.replace(/'/g, "\\'")}' ORDER BY \`TimeStamp\` DESC`
+        const sql = `SELECT * FROM \`flutter-5e2fd.etg_database.ProjectLogs\` WHERE \`Project ID\` = '${projectId.replace(/'/g, "\\'")}' ORDER BY \`TimeStamp\` DESC`
         const rows = await queryBigQuery(sql)
 
         return {

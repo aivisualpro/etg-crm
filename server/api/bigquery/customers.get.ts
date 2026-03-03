@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
       return { success: true, count: _cache.data.length, customers: _cache.data, cached: true }
     }
 
-    let sql = 'SELECT * FROM `appsheet-417200.SWSCRMV4.Customers`'
+    let sql = 'SELECT * FROM `flutter-5e2fd.etg_database.Customers`'
 
     if (search) {
       sql += ` WHERE LOWER(CONCAT(IFNULL(\`First Name\`, ''), ' ', IFNULL(\`Last Name\`, ''))) LIKE LOWER(@search)

@@ -13,7 +13,7 @@ export default defineEventHandler(async () => {
             return { success: true, counts: _cache.data, cached: true }
         }
 
-        const sql = `SELECT \`Project ID\`, COUNT(*) as cnt FROM \`appsheet-417200.SWSCRMV4.ProjectLogs\` GROUP BY \`Project ID\``
+        const sql = `SELECT \`Project ID\`, COUNT(*) as cnt FROM \`flutter-5e2fd.etg_database.ProjectLogs\` GROUP BY \`Project ID\``
         const rows = await queryBigQuery(sql)
 
         const counts: Record<string, number> = {}

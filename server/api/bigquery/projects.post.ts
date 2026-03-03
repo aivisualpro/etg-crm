@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
         const projectId = nanoid(8)
 
         const sql = `
-      INSERT INTO \`appsheet-417200.SWSCRMV4.Projects\`
+      INSERT INTO \`flutter-5e2fd.etg_database.Projects\`
         (\`Project ID\`, \`Customer name\`, \`Customer Address\`, \`Branch Name\`,
          \`Project Folder\`, \`Vendor Name\`, \`Project Type\`, \`Job Status\`,
          \`Project Status\`, \`Project Manager\`, \`Project Manager VA\`,

@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     if (!body.role) throw createError({ statusCode: 400, statusMessage: 'Role name is required' })
     const escape = (v: string) => (v || '').replace(/'/g, "\\'")
-    const sql = `DELETE FROM \`appsheet-417200.SWSCRMV4.RoleManagement\` WHERE Role = '${escape(body.role)}'`
+    const sql = `DELETE FROM \`flutter-5e2fd.etg_database.RoleManagement\` WHERE Role = '${escape(body.role)}'`
     await queryBigQuery(sql)
     return { success: true, message: 'Role deleted successfully' }
   }

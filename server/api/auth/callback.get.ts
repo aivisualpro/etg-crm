@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     const picture = profile.picture || ''
 
     // ── Check if user exists in the Users table ──
-    const checkSql = `SELECT Email FROM \`appsheet-417200.SWSCRMV4.Users\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
+    const checkSql = `SELECT Email FROM \`flutter-5e2fd.etg_database.Users\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
     const existingRows = await queryBigQuery(checkSql, { email })
 
     if (existingRows.length === 0) {
@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
 
     // ── User exists — update Status = TRUE ──
     const updateSql = `
-      UPDATE \`appsheet-417200.SWSCRMV4.Users\`
+      UPDATE \`flutter-5e2fd.etg_database.Users\`
       SET Status = TRUE
       WHERE LOWER(Email) = LOWER(@email)
     `

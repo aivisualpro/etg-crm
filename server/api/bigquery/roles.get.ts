@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const search = (query.search as string || '').trim()
 
-    let sql = 'SELECT * FROM `appsheet-417200.SWSCRMV4.RoleManagement`'
+    let sql = 'SELECT * FROM `flutter-5e2fd.etg_database.RoleManagement`'
 
     if (search) {
       sql += ` WHERE LOWER(IFNULL(Role, '')) LIKE LOWER(@search)

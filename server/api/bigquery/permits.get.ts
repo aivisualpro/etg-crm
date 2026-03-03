@@ -24,8 +24,8 @@ export default defineEventHandler(async (event) => {
             : ''
 
         const [activeRows, closedRows] = await Promise.all([
-            queryBigQuery(`SELECT * FROM \`appsheet-417200.SWSCRMV4.ProjectPermits\`${whereClause}`),
-            queryBigQuery(`SELECT * FROM \`appsheet-417200.SWSCRMV4.ProjectPermitsClosed\`${whereClause}`),
+            queryBigQuery(`SELECT * FROM \`flutter-5e2fd.etg_database.ProjectPermits\`${whereClause}`),
+            queryBigQuery(`SELECT * FROM \`flutter-5e2fd.etg_database.ProjectPermitsClosed\`${whereClause}`),
         ])
 
         // Tag each row with its source

@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
 
         const sql = `
       SELECT id, name, route, filters, user_email, user_name, created_at, updated_at
-      FROM \`appsheet-417200.SWSCRMV4.FilterTemplatesNew\`
+      FROM \`flutter-5e2fd.etg_database.FilterTemplatesNew\`
       WHERE route = '${escape(route)}'
         AND (user_email = '${escape(userEmail)}' OR is_shared = TRUE)
       ORDER BY updated_at DESC

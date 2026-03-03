@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
     const escape = (v: string) => (v || '').replace(/'/g, "\\'")
 
     const sql = `
-      INSERT INTO \`appsheet-417200.SWSCRMV4.RoleManagement\`
+      INSERT INTO \`flutter-5e2fd.etg_database.RoleManagement\`
         (Role, Events, Customers, Projects, Documents, Notes, Users, \`Project Dashboard Layout\`, \`Project Buttons\`)
       VALUES (
         '${escape(body.role)}',

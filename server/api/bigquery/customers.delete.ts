@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Customer ID is required' })
     }
 
-    const sql = 'DELETE FROM `appsheet-417200.SWSCRMV4.Customers` WHERE `Customer ID` = @customerId'
+    const sql = 'DELETE FROM `flutter-5e2fd.etg_database.Customers` WHERE `Customer ID` = @customerId'
     await queryBigQuery(sql, { customerId: body.customerId })
 
     return { success: true, message: 'Customer deleted' }

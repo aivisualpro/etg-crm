@@ -34,7 +34,7 @@ export default defineEventHandler(async () => {
     }
 
     const colList = COLUMNS.map(c => `\`${c}\``).join(', ')
-    const sql = `SELECT ${colList} FROM \`appsheet-417200.SWSCRMV4.Projects\` ORDER BY \`TimeStamp\` DESC`
+    const sql = `SELECT ${colList} FROM \`flutter-5e2fd.etg_database.Projects\` ORDER BY \`TimeStamp\` DESC`
 
     const rows = await queryBigQuery(sql)
 

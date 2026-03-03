@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
     const escape = (v: string) => (v || '').replace(/'/g, "\\'")
 
     const sql = `
-      INSERT INTO \`appsheet-417200.SWSCRMV4.Users\`
+      INSERT INTO \`flutter-5e2fd.etg_database.Users\`
         (\`First Name\`, \`Last Name\`, Email, Phone, Role, \`Secondary Role\`, Vendors, Department, Branch, Status, Location, UTC)
       VALUES (
         '${escape(body.firstName)}',

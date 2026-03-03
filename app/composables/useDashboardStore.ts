@@ -24,14 +24,17 @@ const _lastFetched = ref(0)
 let _refreshTimer: ReturnType<typeof setInterval> | null = null
 
 function _buildMaps() {
-    // User name map (email → display name)
+    // User name map — try Email-based first, fall back to AppSheet A2 (name) field
     _userNameMap.value = Object.fromEntries(
         _users.value
-            .filter((u: any) => u.Email)
-            .map((u: any) => [
-                u.Email.toLowerCase(),
-                [u['First Name'], u['Last Name']].filter(Boolean).join(' ') || u.Email,
-            ]),
+            .filter((u: any) => u.Email || u.A2)
+            .map((u: any) => {
+                const key = (u.Email || u.A2 || '').toLowerCase()
+                const name = u['First Name'] && u['Last Name']
+                    ? [u['First Name'], u['Last Name']].filter(Boolean).join(' ')
+                    : u.A2 || u.Email || key
+                return [key, name]
+            }),
     )
 
     // Customer name map (Customer ID → display name, title-cased)

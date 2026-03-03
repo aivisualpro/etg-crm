@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
       return { success: true, message: 'No fields to update' }
     }
 
-    const sql = `UPDATE \`appsheet-417200.SWSCRMV4.Customers\`
+    const sql = `UPDATE \`flutter-5e2fd.etg_database.Customers\`
                  SET ${setClauses.join(', ')}
                  WHERE \`Customer ID\` = @customerId`
 

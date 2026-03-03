@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
         const escape = (v: string) => (v || '').replace(/'/g, "\\'")
 
         const sql = `
-      DELETE FROM \`appsheet-417200.SWSCRMV4.FilterTemplatesNew\`
+      DELETE FROM \`flutter-5e2fd.etg_database.FilterTemplatesNew\`
       WHERE id = '${escape(id)}'
     `
 

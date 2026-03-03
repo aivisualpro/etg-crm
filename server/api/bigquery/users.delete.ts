@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const escape = (v: string) => (v || '').replace(/'/g, "\\'")
-    const sql = `DELETE FROM \`appsheet-417200.SWSCRMV4.Users\` WHERE Email = '${escape(body.email)}'`
+    const sql = `DELETE FROM \`flutter-5e2fd.etg_database.Users\` WHERE Email = '${escape(body.email)}'`
 
     await queryBigQuery(sql)
     return { success: true, message: 'User deleted successfully' }

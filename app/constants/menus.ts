@@ -24,6 +24,12 @@ export const navMenu: NavMenu[] = [
         link: '/admin/users',
       },
       {
+        title: 'Entities',
+        titleKey: 'nav.entities',
+        icon: 'i-lucide-building-2',
+        link: '/admin/entities',
+      },
+      {
         title: 'Roles & Permissions',
         titleKey: 'nav.rolesPermissions',
         icon: 'i-lucide-shield-check',

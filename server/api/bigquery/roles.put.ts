@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
     const escape = (v: string) => (v || '').replace(/'/g, "\\'")
 
     const sql = `
-      UPDATE \`appsheet-417200.SWSCRMV4.RoleManagement\`
+      UPDATE \`flutter-5e2fd.etg_database.RoleManagement\`
       SET
         Events = '${escape(body.events)}',
         Customers = '${escape(body.customers)}',

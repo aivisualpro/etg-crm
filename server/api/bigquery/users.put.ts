@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
     const escape = (v: string) => (v || '').replace(/'/g, "\\'")
 
     const sql = `
-      UPDATE \`appsheet-417200.SWSCRMV4.Users\`
+      UPDATE \`flutter-5e2fd.etg_database.Users\`
       SET
         \`First Name\` = '${escape(body.firstName)}',
         \`Last Name\` = '${escape(body.lastName)}',

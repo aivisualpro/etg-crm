@@ -9,14 +9,7 @@ const search = ref('')
 const CHUNK_SIZE = 30
 const visibleCount = ref(CHUNK_SIZE)
 const activeRole = ref('')
-
-// CRUD state
-const showDialog = ref(false)
-const showDeleteDialog = ref(false)
-const editingUser = ref<any>(null)
-const deletingUser = ref<any>(null)
-const saving = ref(false)
-const formData = ref<Record<string, any>>({})
+const syncing = ref(false)
 
 // Teleport mount check
 const isMounted = ref(false)
@@ -26,102 +19,43 @@ onMounted(() => { isMounted.value = true })
 const { users, init, refresh } = useDashboardStore()
 init()
 
-// ─── Form Fields ─────────────────────────────────────────────
-const formFields = [
-  { key: 'firstName', label: 'First Name', placeholder: 'John' },
-  { key: 'lastName', label: 'Last Name', placeholder: 'Doe' },
-  { key: 'email', label: 'Email', type: 'email', placeholder: 'john@example.com' },
-  { key: 'phone', label: 'Phone', placeholder: '(555) 000-0000' },
-  { key: 'role', label: 'Role', placeholder: 'Admin' },
-  { key: 'secondaryRole', label: 'Secondary Role', placeholder: '' },
-  { key: 'vendors', label: 'Vendors', placeholder: '' },
-  { key: 'department', label: 'Department', placeholder: '' },
-  { key: 'branch', label: 'Branch', placeholder: '' },
-  { key: 'location', label: 'Location', placeholder: '' },
-  { key: 'utc', label: 'UTC', type: 'number', placeholder: '-5' },
-  {
-    key: 'status', label: 'Status', type: 'select', options: [
-      { label: 'Active', value: 'true' },
-      { label: 'Inactive', value: 'false' },
-    ],
-  },
+// ─── Column Mapping (AppSheet code → Language label) ────────
+// Based on etgLanguage table: ID → eng
+const columnDefs = [
+  { key: 'A2', label: 'User', width: '180px' },
+  { key: 'A200', label: 'Role', width: '130px' },
+  { key: 'A201', label: 'Phone', width: '140px' },
+  { key: 'A203', label: 'Preferred Language', width: '140px' },
+  { key: 'Status', label: 'Status', width: '100px' },
+  { key: 'A7', label: 'Level 1', width: '140px' },
+  { key: 'A8', label: 'Level 2', width: '140px' },
+  { key: 'A9', label: 'Level 3', width: '140px' },
+  { key: 'A209', label: 'Home', width: '130px' },
+  { key: 'A205', label: 'Module Permissions', width: '160px' },
+  { key: 'A206', label: 'Furniture Control', width: '130px' },
+  { key: 'A207', label: 'Equipment Control', width: '130px' },
+  { key: 'A208', label: 'Vehicles Control', width: '130px' },
+  { key: 'A84', label: 'Language', width: '100px' },
 ]
 
-
-
-// ─── CRUD Handlers ──────────────────────────────────────────
-function openCreate() {
-  editingUser.value = null
-  formData.value = {}
-  formFields.forEach(f => { formData.value[f.key] = f.type === 'select' ? 'true' : '' })
-  showDialog.value = true
-}
-
-function openEdit(user: any) {
-  editingUser.value = user
-  formData.value = {
-    firstName: user['First Name'] || '',
-    lastName: user['Last Name'] || '',
-    email: user.Email || '',
-    phone: user.Phone || '',
-    role: user.Role || '',
-    secondaryRole: user['Secondary Role'] || '',
-    vendors: user.Vendors || '',
-    department: user.Department || '',
-    branch: user.Branch || '',
-    location: user.Location || '',
-    utc: user.UTC ?? '',
-    status: user.Status === true || user.Status === 'true' ? 'true' : 'false',
-  }
-  showDialog.value = true
-}
-
-async function handleSave() {
-  saving.value = true
+// ─── Sync from AppSheet ─────────────────────────────────────
+async function syncUsers() {
+  syncing.value = true
   try {
-    if (editingUser.value) {
-      await $fetch('/api/bigquery/users', { method: 'PUT', body: formData.value })
-      toast.success('User updated successfully')
-    }
-    else {
-      await $fetch('/api/bigquery/users', { method: 'POST', body: formData.value })
-      toast.success('User created successfully')
-    }
-    showDialog.value = false
+    const data = await $fetch<{ success: boolean, count: number, message: string }>('/api/bigquery/sync-users', { method: 'POST' })
+    toast.success(data.message || `Synced ${data.count} users`)
     await refresh()
   }
   catch (e: any) {
-    toast.error(e.data?.statusMessage || 'Failed to save user')
+    toast.error(e.data?.statusMessage || 'Sync failed')
   }
   finally {
-    saving.value = false
-  }
-}
-
-function confirmDelete(user: any) {
-  deletingUser.value = user
-  showDeleteDialog.value = true
-}
-
-async function handleDelete() {
-  if (!deletingUser.value) return
-  try {
-    await $fetch('/api/bigquery/users', {
-      method: 'DELETE',
-      body: { email: deletingUser.value.Email },
-    })
-    toast.success('User deleted successfully')
-    showDeleteDialog.value = false
-    deletingUser.value = null
-    await refresh()
-  }
-  catch (e: any) {
-    toast.error(e.data?.statusMessage || 'Failed to delete user')
+    syncing.value = false
   }
 }
 
 // ─── Sorting ───────────────────────────────────────────────
-const sortBy = ref('fullName')
+const sortBy = ref('A2')
 const sortDir = ref<'asc' | 'desc'>('asc')
 
 function toggleSort(col: string) {
@@ -135,11 +69,11 @@ function sortIcon(col: string) {
 }
 
 // ─── Computed ───────────────────────────────────────────────
-// Extract unique roles from users data
+// Extract unique roles from A200 field
 const uniqueRoles = computed(() => {
   const rolesSet = new Set<string>()
   users.value.forEach((u: any) => {
-    if (u.Role) rolesSet.add(u.Role)
+    if (u.A200) rolesSet.add(u.A200)
   })
   return [...rolesSet].sort()
 })
@@ -147,52 +81,30 @@ const uniqueRoles = computed(() => {
 const filteredUsers = computed(() => {
   let result = users.value
 
-  // Filter by active role
+  // Filter by active role (A200)
   if (activeRole.value) {
-    result = result.filter((u: any) => u.Role === activeRole.value)
+    result = result.filter((u: any) => u.A200 === activeRole.value)
   }
 
   // Filter by search
   if (search.value) {
     const q = search.value.toLowerCase()
     result = result.filter((u: any) => {
-      const fullName = [u['First Name'], u['Last Name']].filter(Boolean).join(' ')
-      return [...Object.values(u), fullName].filter(Boolean).some(val => String(val).toLowerCase().includes(q))
+      return [u.A2, u.A200, u.A201, u.Status, u.A7, u.A8, u.A9]
+        .filter(Boolean)
+        .some(val => String(val).toLowerCase().includes(q))
     })
   }
 
   return result
 })
 
-const USER_COL_FIELD: Record<string, string> = {
-  fullName: 'First Name',
-  email: 'Email',
-  phone: 'Phone',
-  role: 'Role',
-  secondaryRole: 'Secondary Role',
-  vendors: 'Vendors',
-  department: 'Department',
-  branch: 'Branch',
-  status: 'Status',
-  location: 'Location',
-  utc: 'UTC',
-  lastLoginDate: 'Last Login Date',
-}
-
 const sortedUsers = computed(() => {
   const arr = [...filteredUsers.value]
-  const field = USER_COL_FIELD[sortBy.value] || sortBy.value
+  const col = sortBy.value
   return arr.sort((a, b) => {
-    let av = ''
-    let bv = ''
-    if (sortBy.value === 'fullName') {
-      av = [a['First Name'], a['Last Name']].filter(Boolean).join(' ').toLowerCase()
-      bv = [b['First Name'], b['Last Name']].filter(Boolean).join(' ').toLowerCase()
-    }
-    else {
-      av = String(a[field] ?? '').toLowerCase()
-      bv = String(b[field] ?? '').toLowerCase()
-    }
+    const av = String(a[col] ?? '').toLowerCase()
+    const bv = String(b[col] ?? '').toLowerCase()
     const cmp = av.localeCompare(bv)
     return sortDir.value === 'asc' ? cmp : -cmp
   })
@@ -222,24 +134,32 @@ onMounted(() => {
 })
 
 // ─── Helpers ────────────────────────────────────────────────
-function getInitials(first?: string, last?: string): string {
-  return `${(first || '?')[0]}${(last || '?')[0]}`.toUpperCase()
+function getInitials(name?: string): string {
+  if (!name) return '??'
+  const parts = name.trim().split(/\s+/)
+  return parts.map(p => p[0]).slice(0, 2).join('').toUpperCase()
 }
 
-function getFullName(u: any): string {
-  return [u['First Name'], u['Last Name']].filter(Boolean).join(' ') || '—'
+function statusColor(status?: string) {
+  const s = (status || '').toLowerCase()
+  if (s === 'active' || s === 'true') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+  if (s === 'inactive' || s === 'false') return 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+  return 'bg-muted text-muted-foreground'
 }
 
-function formatPhone(value?: string): string {
-  if (!value) return '—'
-  const digits = value.replace(/\D/g, '')
-  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
-  if (digits.length === 11 && digits[0] === '1') return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
-  return value
+function statusLabel(status?: string) {
+  const s = (status || '').toLowerCase()
+  if (s === 'active' || s === 'true') return 'Active'
+  if (s === 'inactive' || s === 'false') return 'Inactive'
+  return status || '—'
 }
 
-function statusLabel(u: any): boolean {
-  return u.Status === true || u.Status === 'true'
+// Resolve language/role codes to readable labels from etgLanguage
+// For now, we display raw values; the language API can enhance this later
+function cellValue(row: any, key: string): string {
+  const val = row[key]
+  if (val === null || val === undefined || val === '') return '—'
+  return String(val)
 }
 </script>
 
@@ -256,12 +176,13 @@ function statusLabel(u: any): boolean {
           <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
             {{ filteredUsers.length }} record{{ filteredUsers.length !== 1 ? 's' : '' }}
           </p>
-          <Button variant="ghost" size="sm" class="h-8" @click="refresh()">
-            <Icon name="i-lucide-refresh-cw" class="size-3.5" />
-          </Button>
-          <Button size="sm" class="h-8" @click="openCreate">
-            <Icon name="i-lucide-plus" class="mr-1 size-3.5" />
-            Add User
+          <Button variant="ghost" size="sm" class="h-8" :disabled="syncing" @click="syncUsers()">
+            <Icon
+              name="i-lucide-refresh-cw"
+              class="size-3.5"
+              :class="syncing ? 'animate-spin' : ''"
+            />
+            <span v-if="syncing" class="ml-1 text-xs">Syncing...</span>
           </Button>
         </div>
       </Teleport>
@@ -271,202 +192,80 @@ function statusLabel(u: any): boolean {
         <Table>
           <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
             <TableRow class="border-b-0">
-              <TableHead class="min-w-[180px] bg-card cursor-pointer select-none" @click="toggleSort('fullName')">
-                <div class="flex items-center gap-1">Full Name <Icon :name="sortIcon('fullName')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[190px] bg-card cursor-pointer select-none" @click="toggleSort('email')">
-                <div class="flex items-center gap-1">Email <Icon :name="sortIcon('email')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[140px] bg-card cursor-pointer select-none" @click="toggleSort('phone')">
-                <div class="flex items-center gap-1">Phone <Icon :name="sortIcon('phone')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[130px] bg-card cursor-pointer select-none" @click="toggleSort('role')">
-                <div class="flex items-center gap-1">Role <Icon :name="sortIcon('role')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[150px] bg-card cursor-pointer select-none" @click="toggleSort('secondaryRole')">
-                <div class="flex items-center gap-1">Secondary Role <Icon :name="sortIcon('secondaryRole')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[120px] bg-card cursor-pointer select-none" @click="toggleSort('vendors')">
-                <div class="flex items-center gap-1">Vendors <Icon :name="sortIcon('vendors')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[140px] bg-card cursor-pointer select-none" @click="toggleSort('department')">
-                <div class="flex items-center gap-1">Department <Icon :name="sortIcon('department')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[120px] bg-card cursor-pointer select-none" @click="toggleSort('branch')">
-                <div class="flex items-center gap-1">Branch <Icon :name="sortIcon('branch')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[100px] bg-card cursor-pointer select-none" @click="toggleSort('status')">
-                <div class="flex items-center gap-1">Status <Icon :name="sortIcon('status')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[120px] bg-card cursor-pointer select-none" @click="toggleSort('location')">
-                <div class="flex items-center gap-1">Location <Icon :name="sortIcon('location')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[70px] bg-card cursor-pointer select-none" @click="toggleSort('utc')">
-                <div class="flex items-center gap-1">UTC <Icon :name="sortIcon('utc')" class="size-3 opacity-60" /></div>
-              </TableHead>
-              <TableHead class="min-w-[170px] bg-card cursor-pointer select-none" @click="toggleSort('lastLoginDate')">
-                <div class="flex items-center gap-1">Last Login Date <Icon :name="sortIcon('lastLoginDate')" class="size-3 opacity-60" /></div>
+              <TableHead
+                v-for="col in columnDefs"
+                :key="col.key"
+                class="bg-card cursor-pointer select-none whitespace-nowrap"
+                :style="{ minWidth: col.width }"
+                @click="toggleSort(col.key)"
+              >
+                <div class="flex items-center gap-1">
+                  {{ col.label }}
+                  <Icon :name="sortIcon(col.key)" class="size-3 opacity-60" />
+                </div>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow
               v-for="(user, idx) in visibleUsers"
-              :key="user.Email || idx"
+              :key="user.A2 || idx"
               class="group"
             >
-              <!-- Full Name -->
-              <TableCell>
-                <div class="flex items-center gap-2">
-                  <Avatar class="size-7 border shrink-0">
-                    <AvatarFallback class="text-[10px] font-medium bg-gradient-to-br from-violet-500/20 to-indigo-500/20 text-violet-700 dark:text-violet-300">
-                      {{ getInitials(user['First Name'], user['Last Name']) }}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span class="font-medium">{{ getFullName(user) }}</span>
-                </div>
-              </TableCell>
+              <TableCell v-for="col in columnDefs" :key="col.key">
+                <!-- User name with avatar -->
+                <template v-if="col.key === 'A2'">
+                  <div class="flex items-center gap-2">
+                    <Avatar class="size-7 border shrink-0">
+                      <AvatarFallback class="text-[10px] font-medium bg-gradient-to-br from-violet-500/20 to-indigo-500/20 text-violet-700 dark:text-violet-300">
+                        {{ getInitials(user.A2) }}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span class="font-medium">{{ user.A2 || '—' }}</span>
+                  </div>
+                </template>
 
-              <!-- Email -->
-              <TableCell>
-                <span class="text-muted-foreground text-sm">{{ user.Email || '—' }}</span>
-              </TableCell>
+                <!-- Role badge -->
+                <template v-else-if="col.key === 'A200'">
+                  <Badge v-if="user.A200" variant="outline" class="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]">
+                    {{ user.A200 }}
+                  </Badge>
+                  <span v-else class="text-muted-foreground">—</span>
+                </template>
 
-              <!-- Phone -->
-              <TableCell>{{ formatPhone(user.Phone) }}</TableCell>
+                <!-- Status badge -->
+                <template v-else-if="col.key === 'Status'">
+                  <Badge variant="outline" :class="statusColor(user.Status)" class="text-[10px]">
+                    {{ statusLabel(user.Status) }}
+                  </Badge>
+                </template>
 
-              <!-- Role -->
-              <TableCell>
-                <Badge v-if="user.Role" variant="outline" class="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                  {{ user.Role }}
-                </Badge>
-                <span v-else class="text-muted-foreground">—</span>
-              </TableCell>
-
-              <!-- Secondary Role -->
-              <TableCell class="text-muted-foreground text-sm">{{ user['Secondary Role'] || '—' }}</TableCell>
-
-              <!-- Vendors -->
-              <TableCell class="text-muted-foreground text-sm">{{ user.Vendors || '—' }}</TableCell>
-
-              <!-- Department -->
-              <TableCell>{{ user.Department || '—' }}</TableCell>
-
-              <!-- Branch -->
-              <TableCell>{{ user.Branch || '—' }}</TableCell>
-
-              <!-- Status -->
-              <TableCell>
-                <Badge
-                  v-if="statusLabel(user)"
-                  variant="outline"
-                  class="bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                >
-                  Active
-                </Badge>
-                <Badge v-else variant="outline" class="bg-zinc-500/10 text-zinc-500 border-zinc-500/20">
-                  Inactive
-                </Badge>
-              </TableCell>
-
-              <!-- Location -->
-              <TableCell>{{ user.Location || '—' }}</TableCell>
-
-              <!-- UTC -->
-              <TableCell class="text-muted-foreground text-sm">{{ user.UTC != null ? `UTC${user.UTC >= 0 ? '+' : ''}${user.UTC}` : '—' }}</TableCell>
-
-              <!-- Last Login Date -->
-              <TableCell>
-                <span class="text-muted-foreground text-sm">{{ user['Last Login Date'] || user['Last Log In TimeStamp'] || '—' }}</span>
+                <!-- Default text -->
+                <template v-else>
+                  <span class="text-sm whitespace-nowrap">{{ cellValue(user, col.key) }}</span>
+                </template>
               </TableCell>
             </TableRow>
 
             <!-- Empty State -->
             <TableRow v-if="visibleUsers.length === 0">
-              <TableCell :colspan="12" class="h-32 text-center">
+              <TableCell :colspan="columnDefs.length" class="h-32 text-center">
                 <div class="flex flex-col items-center gap-2 text-muted-foreground">
                   <Icon name="i-lucide-inbox" class="size-8" />
                   <p>No users found</p>
-                  <Button size="sm" variant="outline" @click="openCreate">
-                    <Icon name="i-lucide-plus" class="mr-1 size-4" />
-                    Add User
-                  </Button>
                 </div>
               </TableCell>
             </TableRow>
 
             <!-- Infinite scroll sentinel -->
             <tr v-if="hasMore" ref="sentinelRef">
-              <td :colspan="12" class="h-10 text-center text-xs text-muted-foreground">
+              <td :colspan="columnDefs.length" class="h-10 text-center text-xs text-muted-foreground">
                 Loading more…
               </td>
             </tr>
           </TableBody>
         </Table>
       </div>
-
-      <!-- Create/Edit Dialog -->
-      <Dialog v-model:open="showDialog">
-        <DialogContent class="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{{ editingUser ? 'Edit' : 'New' }} User</DialogTitle>
-            <DialogDescription class="sr-only">
-              {{ editingUser ? 'Edit' : 'Create' }} a user record
-            </DialogDescription>
-          </DialogHeader>
-          <form class="space-y-4" @submit.prevent="handleSave">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div v-for="field in formFields" :key="field.key" class="space-y-1.5">
-                <Label :for="field.key" class="text-xs">{{ field.label }}</Label>
-                <Select v-if="field.type === 'select'" v-model="formData[field.key]">
-                  <SelectTrigger>
-                    <SelectValue :placeholder="`Select ${field.label.toLowerCase()}`" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem v-for="opt in field.options" :key="opt.value" :value="opt.value">
-                      {{ opt.label }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  v-else
-                  :id="field.key"
-                  v-model="formData[field.key]"
-                  :type="field.type || 'text'"
-                  :placeholder="field.placeholder"
-                  :disabled="!!editingUser && field.key === 'email'"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" type="button" @click="showDialog = false">Cancel</Button>
-              <Button type="submit" :disabled="saving">
-                <Icon v-if="saving" name="i-lucide-loader-2" class="mr-1 size-4 animate-spin" />
-                {{ editingUser ? 'Update' : 'Create' }}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <!-- Delete Confirmation -->
-      <AlertDialog v-model:open="showDeleteDialog">
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete User?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete <strong>{{ getFullName(deletingUser || {}) }}</strong>
-              ({{ deletingUser?.Email }}). This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="handleDelete">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   </AdminLayout>
 </template>

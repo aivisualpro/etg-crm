@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     const filtersJson = JSON.stringify(filters).replace(/'/g, "\\'")
 
     const sql = `
-      INSERT INTO \`appsheet-417200.SWSCRMV4.FilterTemplatesNew\`
+      INSERT INTO \`flutter-5e2fd.etg_database.FilterTemplatesNew\`
         (id, name, route, filters, user_email, user_name, is_shared, created_at, updated_at)
       VALUES (
         '${escape(id)}',
