@@ -3,20 +3,25 @@
  *
  * Tracks the progress of data sync operations (furniture, levels, users)
  * and exposes reactive state for the header progress bar.
+ *
+ * Furniture sync modes:
+ *  - Smart Sync:  Compares sheet counts vs BQ counts, only syncs changed partitions
+ *  - Full Sync:   Re-syncs all partitions from scratch
+ *  - Health Check: Gets live sheet/BQ count comparison (no data transfer)
  */
 
 interface SyncStep {
     label: string
     index: number
     total: number
-    status: 'pending' | 'running' | 'done' | 'error'
+    status: 'pending' | 'running' | 'done' | 'error' | 'skipped'
     rowsFetched?: number
     message?: string
 }
 
 interface SyncState {
     active: boolean
-    type: string // 'furniture' | 'levels' | 'users' | etc.
+    type: string
     currentStep: number
     totalSteps: number
     currentLabel: string
@@ -25,6 +30,29 @@ interface SyncState {
     steps: SyncStep[]
     error: string | null
     startedAt: number
+}
+
+interface PartitionHealth {
+    index: number
+    a7: string
+    sheet: string
+    expected: number
+    sheetCount: number
+    bqCount: number
+    diff: number
+    status: 'synced' | 'behind' | 'excess'
+    needsSync: boolean
+}
+
+interface HealthCheckResult {
+    success: boolean
+    partitions: PartitionHealth[]
+    total: number
+    bqTotal: number
+    sheetTotal: number
+    diff: number
+    needsSyncCount: number
+    allSynced: boolean
 }
 
 const _syncState = reactive<SyncState>({
@@ -41,9 +69,6 @@ const _syncState = reactive<SyncState>({
 })
 
 export function useSyncProgress() {
-    /**
-     * Start a new sync operation
-     */
     function startSync(type: string, steps: { label: string }[]) {
         _syncState.active = true
         _syncState.type = type
@@ -62,9 +87,6 @@ export function useSyncProgress() {
         }))
     }
 
-    /**
-     * Update progress for current step
-     */
     function updateStep(index: number, updates: Partial<SyncStep>) {
         if (_syncState.steps[index]) {
             Object.assign(_syncState.steps[index], updates)
@@ -78,9 +100,6 @@ export function useSyncProgress() {
         }
     }
 
-    /**
-     * Mark a step as complete and move to the next
-     */
     function completeStep(index: number, rowsFetched?: number) {
         const step = _syncState.steps[index]
         if (step) {
@@ -99,59 +118,122 @@ export function useSyncProgress() {
         _syncState.percent = Math.round(((index + 1) / _syncState.totalSteps) * 100)
     }
 
-    /**
-     * Mark the sync as fully done
-     */
     function finishSync() {
         _syncState.percent = 100
-        // Auto-hide after a brief delay
         setTimeout(() => {
             _syncState.active = false
         }, 3000)
     }
 
-    /**
-     * Mark the sync as errored
-     */
     function failSync(error: string) {
         _syncState.error = error
-        // Keep visible for 5s
         setTimeout(() => {
             _syncState.active = false
             _syncState.error = null
         }, 5000)
     }
 
-    /**
-     * Run a full furniture sync with progress tracking
-     */
-    async function runFurnitureSync(options?: { images?: boolean }) {
+    // ─── Health Check: Compare sheet counts vs BQ (no sync) ───
+    async function runHealthCheck(): Promise<HealthCheckResult> {
+        const result = await $fetch<HealthCheckResult>(
+            '/api/bigquery/sync-furniture?partition=list',
+            { method: 'POST' },
+        )
+        return result
+    }
+
+    // ─── Smart Sync: Only sync partitions that changed ────────
+    async function runSmartSync() {
+        // Step 1: Health check to see what needs syncing
+        startSync('Smart Sync', [{ label: 'Checking partitions...' }])
+        updateStep(0, { status: 'running' })
+
         try {
-            // Step 1: Get partition list
-            const listRes = await $fetch<{ success: boolean, partitions: { index: number, sheet: string }[], total: number }>('/api/bigquery/sync-furniture?partition=list', { method: 'POST' })
+            const health = await runHealthCheck()
+            const needsSync = health.partitions.filter(p => p.needsSync)
+
+            if (needsSync.length === 0) {
+                _syncState.currentLabel = 'All partitions already in sync!'
+                completeStep(0)
+                finishSync()
+                return { synced: 0, skipped: health.partitions.length, health }
+            }
+
+            // Re-init progress with actual steps
+            const steps = needsSync.map(p => ({ label: `${p.sheet} (${p.status === 'behind' ? `+${p.diff}` : p.diff})` }))
+            startSync('Smart Sync', steps)
+
+            let totalSynced = 0
+            for (let i = 0; i < needsSync.length; i++) {
+                const p = needsSync[i]!
+                updateStep(i, { status: 'running' })
+
+                try {
+                    const controller = new AbortController()
+                    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000)
+
+                    // Use delta mode if BQ just needs more rows
+                    const mode = p.status === 'behind' ? 'delta' : 'full'
+                    const result = await $fetch<{ success: boolean, count: number, sheet: string }>(
+                        `/api/bigquery/sync-furniture?partition=${p.index}&mode=${mode}&images=false`,
+                        { method: 'POST', signal: controller.signal },
+                    )
+
+                    clearTimeout(timeout)
+                    completeStep(i, result.count || 0)
+                    totalSynced += result.count || 0
+                }
+                catch (err: any) {
+                    const step = _syncState.steps[i]
+                    if (step) {
+                        step.status = 'error'
+                        step.message = err?.data?.statusMessage || err.message || 'Failed'
+                    }
+                    completeStep(i, 0)
+                }
+            }
+
+            finishSync()
+            return {
+                synced: totalSynced,
+                skipped: health.partitions.length - needsSync.length,
+                processed: needsSync.length,
+                health,
+            }
+        }
+        catch (err: any) {
+            failSync(err?.data?.statusMessage || err.message || 'Smart sync failed')
+            throw err
+        }
+    }
+
+    // ─── Full Sync: Re-sync ALL partitions from scratch ───────
+    async function runFullSync(options?: { images?: boolean }) {
+        try {
+            const listRes = await $fetch<{ success: boolean, partitions: { index: number, sheet: string }[], total: number }>(
+                '/api/bigquery/sync-furniture?partition=list',
+                { method: 'POST' },
+            )
 
             if (!listRes.success || !listRes.partitions?.length) {
                 throw new Error('Could not fetch partition list')
             }
 
             const partitions = listRes.partitions
-            startSync('Furniture', partitions.map(p => ({ label: p.sheet })))
+            startSync('Full Sync', partitions.map(p => ({ label: p.sheet })))
 
-            // Step 2: Sync each partition sequentially
-            // Default images=false for speed (can be synced separately)
             const syncImages = options?.images === true
             for (let i = 0; i < partitions.length; i++) {
                 const p = partitions[i]!
                 updateStep(i, { status: 'running' })
 
                 try {
-                    const imgParam = syncImages ? '' : '&images=false'
-                    // 5 minute timeout per partition — large sheets can take a while
+                    const imgParam = syncImages ? '&images=true' : '&images=false'
                     const controller = new AbortController()
                     const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000)
 
-                    const result = await $fetch<{ success: boolean, count: number, sheet: string }>(
-                        `/api/bigquery/sync-furniture?partition=${p.index}${imgParam}`,
+                    const result = await $fetch<{ success: boolean, count: number }>(
+                        `/api/bigquery/sync-furniture?partition=${p.index}&mode=full${imgParam}`,
                         { method: 'POST', signal: controller.signal },
                     )
 
@@ -159,13 +241,11 @@ export function useSyncProgress() {
                     completeStep(i, result.count || 0)
                 }
                 catch (err: any) {
-                    const failedStep = _syncState.steps[i]
-                    if (failedStep) {
-                        failedStep.status = 'error'
-                        failedStep.message = err?.data?.message || err.message || 'Failed'
+                    const step = _syncState.steps[i]
+                    if (step) {
+                        step.status = 'error'
+                        step.message = err?.data?.statusMessage || err.message || 'Failed'
                     }
-                    console.error(`[Sync] Partition ${i} (${p.sheet}) failed:`, err?.data?.message || err.message)
-                    // Continue with remaining partitions
                     completeStep(i, 0)
                 }
             }
@@ -173,13 +253,97 @@ export function useSyncProgress() {
             finishSync()
         }
         catch (err: any) {
-            failSync(err?.data?.message || err.message || 'Sync failed')
+            failSync(err?.data?.statusMessage || err.message || 'Full sync failed')
+            throw err
         }
     }
 
-    /**
-     * Run levels sync with progress
-     */
+    // (Legacy alias)
+    async function runFurnitureSync(options?: { images?: boolean }) {
+        return runSmartSync()
+    }
+
+    // ─── Deduplication ────────────────────────────────────────
+    async function runDeduplication() {
+        startSync('Deduplication', [{ label: 'Removing duplicates...' }])
+        updateStep(0, { status: 'running' })
+
+        try {
+            const result = await $fetch<{
+                success: boolean
+                before: number
+                after: number
+                removed: number
+                partitionCountsBefore: Record<string, number>
+                partitionCountsAfter: Record<string, number>
+            }>('/api/bigquery/deduplicate-furniture', { method: 'POST' })
+
+            completeStep(0, result.removed || 0)
+            finishSync()
+            return result
+        }
+        catch (err: any) {
+            failSync(err?.data?.statusMessage || err.message || 'Deduplication failed')
+            throw err
+        }
+    }
+
+    // ─── Image Sync ───────────────────────────────────────────
+    async function runImageSync(options?: { partition?: string }) {
+        startSync('Image Sync', [{ label: 'Syncing images to cloud storage...' }])
+        updateStep(0, { status: 'running' })
+
+        try {
+            let totalCopied = 0
+            let offset = 0
+            const batchSize = 100
+            let remaining = 1
+
+            while (remaining > 0) {
+                const params: Record<string, string | number> = { batch: batchSize, offset }
+                if (options?.partition) params.partition = options.partition
+
+                const result = await $fetch<{
+                    success: boolean
+                    totalNeedingImages: number
+                    processed: number
+                    imagesCopied: number
+                    remaining: number
+                    nextOffset: number | null
+                }>('/api/bigquery/sync-furniture-images', {
+                    method: 'POST',
+                    params,
+                })
+
+                totalCopied += result.imagesCopied
+                remaining = result.remaining
+
+                const percentDone = result.totalNeedingImages > 0
+                    ? Math.round(((result.totalNeedingImages - remaining) / result.totalNeedingImages) * 100)
+                    : 100
+                _syncState.percent = percentDone
+                _syncState.rowsFetched = totalCopied
+                _syncState.currentLabel = `${totalCopied} images synced... (${remaining} rows remaining)`
+
+                if (result.nextOffset !== null) {
+                    offset = result.nextOffset
+                }
+                else {
+                    break
+                }
+            }
+
+            completeStep(0, totalCopied)
+            finishSync()
+            return { totalCopied }
+        }
+        catch (err: any) {
+            failSync(err?.data?.statusMessage || err.message || 'Image sync failed')
+            throw err
+        }
+    }
+
+    // ─── Levels Sync ──────────────────────────────────────────
     async function runLevelsSync() {
         startSync('Levels', [
             { label: 'Level 1' },
@@ -204,15 +368,13 @@ export function useSyncProgress() {
         }
     }
 
-    /**
-     * Run users sync with progress
-     */
+    // ─── Users Sync ───────────────────────────────────────────
     async function runUsersSync() {
         startSync('Users', [{ label: 'Users' }])
         updateStep(0, { status: 'running' })
 
         try {
-            const result = await $fetch<{ success: boolean }>('/api/bigquery/sync-users', { method: 'POST' })
+            await $fetch<{ success: boolean }>('/api/bigquery/sync-users', { method: 'POST' })
             completeStep(0)
             finishSync()
         }
@@ -228,8 +390,13 @@ export function useSyncProgress() {
         completeStep,
         finishSync,
         failSync,
+        runHealthCheck,
+        runSmartSync,
+        runFullSync,
         runFurnitureSync,
         runLevelsSync,
         runUsersSync,
+        runDeduplication,
+        runImageSync,
     }
 }

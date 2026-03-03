@@ -130,6 +130,25 @@ function imageUrl(row: any, col: string): string {
   }
   return ''
 }
+
+// Image lightbox
+const lightboxSrc = ref('')
+const showLightbox = ref(false)
+function openLightbox(src: string) {
+  if (src) {
+    lightboxSrc.value = src
+    showLightbox.value = true
+  }
+}
+
+// Image loading errors
+const failedImages = ref(new Set<string>())
+function onImageError(key: string) {
+  failedImages.value.add(key)
+}
+function isImageFailed(key: string): boolean {
+  return failedImages.value.has(key)
+}
 </script>
 
 <template>
@@ -174,12 +193,22 @@ function imageUrl(row: any, col: string): string {
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="(row, idx) in sortedRows" :key="row.ID || idx" class="group">
+          <TableRow v-for="(row, idx) in sortedRows" :key="row.ID || idx" class="group hover:bg-muted/30 transition-colors">
             <TableCell v-for="col in columns" :key="col.key">
               <template v-if="col.isImage">
-                <div class="size-8 rounded-md overflow-hidden bg-muted flex items-center justify-center">
-                  <img v-if="imageUrl(row, col.key)" :src="imageUrl(row, col.key)" :alt="row.A70" class="size-8 object-cover" loading="lazy">
-                  <Icon v-else name="i-lucide-image-off" class="size-3.5 text-muted-foreground/40" />
+                <div
+                  class="size-9 rounded-lg overflow-hidden bg-muted/50 flex items-center justify-center ring-1 ring-border/50 cursor-pointer hover:ring-primary/50 transition-all hover:scale-105"
+                  @click="openLightbox(imageUrl(row, col.key))"
+                >
+                  <img
+                    v-if="imageUrl(row, col.key) && !isImageFailed(`${row.ID}-${col.key}`)"
+                    :src="imageUrl(row, col.key)"
+                    :alt="row.A70"
+                    class="size-9 object-cover"
+                    loading="lazy"
+                    @error="onImageError(`${row.ID}-${col.key}`)"
+                  >
+                  <Icon v-else name="i-lucide-image-off" class="size-3.5 text-muted-foreground/30" />
                 </div>
               </template>
               <template v-else-if="col.key === 'A70'">
@@ -188,16 +217,34 @@ function imageUrl(row: any, col: string): string {
               <template v-else-if="col.key === 'A222'">
                 <span dir="rtl" class="text-sm">{{ row.A222 || '—' }}</span>
               </template>
+              <template v-else-if="col.key === 'A68'">
+                <span
+                  v-if="row.A68"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                  :class="{
+                    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400': row.A68 === 'Good' || row.A68 === '3',
+                    'bg-amber-500/10 text-amber-600 dark:text-amber-400': row.A68 === 'Fair' || row.A68 === '2',
+                    'bg-red-500/10 text-red-600 dark:text-red-400': row.A68 === 'Poor' || row.A68 === '1',
+                    'bg-muted text-muted-foreground': !['Good', 'Fair', 'Poor', '1', '2', '3'].includes(row.A68)
+                  }"
+                >
+                  {{ row.A68 }}
+                </span>
+                <span v-else class="text-sm text-muted-foreground">—</span>
+              </template>
               <template v-else>
                 <span class="text-sm whitespace-nowrap">{{ row[col.key] || '—' }}</span>
               </template>
             </TableCell>
           </TableRow>
           <TableRow v-if="sortedRows.length === 0 && !loading">
-            <TableCell :colspan="columns.length" class="h-32 text-center">
-              <div class="flex flex-col items-center gap-2 text-muted-foreground">
-                <Icon name="i-lucide-inbox" class="size-8" />
-                <p>No matching records</p>
+            <TableCell :colspan="columns.length" class="h-40 text-center">
+              <div class="flex flex-col items-center gap-3 text-muted-foreground">
+                <div class="size-16 rounded-2xl bg-muted/50 flex items-center justify-center">
+                  <Icon name="i-lucide-inbox" class="size-8 text-muted-foreground/40" />
+                </div>
+                <p class="font-medium text-foreground/60">No matching records</p>
+                <p class="text-xs">Try adjusting your search terms.</p>
               </div>
             </TableCell>
           </TableRow>
@@ -225,5 +272,35 @@ function imageUrl(row: any, col: string): string {
         </Button>
       </div>
     </div>
+    <!-- Lightbox (image preview) -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showLightbox && lightboxSrc"
+          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-pointer"
+          @click="showLightbox = false"
+        >
+          <button
+            class="absolute top-4 right-4 size-10 rounded-full bg-white/10 backdrop-blur-xl flex items-center justify-center hover:bg-white/20 transition-colors z-10"
+            @click.stop="showLightbox = false"
+          >
+            <Icon name="i-lucide-x" class="size-5 text-white" />
+          </button>
+          <img
+            :src="lightboxSrc"
+            alt="Preview"
+            class="max-w-[90vw] max-h-[85vh] rounded-2xl shadow-2xl object-contain"
+            @click.stop
+          >
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
