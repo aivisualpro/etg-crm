@@ -138,13 +138,24 @@ export function useSyncProgress() {
             startSync('Furniture', partitions.map(p => ({ label: p.sheet })))
 
             // Step 2: Sync each partition sequentially
+            // Default images=false for speed (can be synced separately)
+            const syncImages = options?.images === true
             for (let i = 0; i < partitions.length; i++) {
                 const p = partitions[i]!
                 updateStep(i, { status: 'running' })
 
                 try {
-                    const imgParam = options?.images === false ? '&images=false' : ''
-                    const result = await $fetch<{ success: boolean, count: number, sheet: string }>(`/api/bigquery/sync-furniture?partition=${p.index}${imgParam}`, { method: 'POST' })
+                    const imgParam = syncImages ? '' : '&images=false'
+                    // 5 minute timeout per partition — large sheets can take a while
+                    const controller = new AbortController()
+                    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000)
+
+                    const result = await $fetch<{ success: boolean, count: number, sheet: string }>(
+                        `/api/bigquery/sync-furniture?partition=${p.index}${imgParam}`,
+                        { method: 'POST', signal: controller.signal },
+                    )
+
+                    clearTimeout(timeout)
                     completeStep(i, result.count || 0)
                 }
                 catch (err: any) {
@@ -153,6 +164,7 @@ export function useSyncProgress() {
                         failedStep.status = 'error'
                         failedStep.message = err?.data?.message || err.message || 'Failed'
                     }
+                    console.error(`[Sync] Partition ${i} (${p.sheet}) failed:`, err?.data?.message || err.message)
                     // Continue with remaining partitions
                     completeStep(i, 0)
                 }

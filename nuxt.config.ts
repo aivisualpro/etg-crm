@@ -4,6 +4,13 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   spaLoadingTemplate: false,
 
+  // Increase server timeout for long-running sync endpoints
+  nitro: {
+    routeRules: {
+      '/api/bigquery/sync-**': { headers: { 'x-request-timeout': '600000' } },
+    },
+  },
+
   watch: ['~/app.config.ts'],
 
   css: ['~/assets/css/tailwind.css'],

@@ -54,7 +54,7 @@ const { runFurnitureSync, syncState } = useSyncProgress()
 async function syncData() {
   syncing.value = true
   try {
-    await runFurnitureSync({ images: true })
+    await runFurnitureSync({ images: false })
     toast.success(`Sync complete: ${syncState.rowsFetched.toLocaleString()} rows`)
     await fetchData()
   }

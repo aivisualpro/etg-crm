@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  source-map: npm:source-map-js@^1.2.0
+
 importers:
 
   .:
@@ -5144,18 +5147,6 @@ packages:
   source-map-support@0.5.21:
     resolution: {integrity: sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w==}
 
-  source-map@0.5.7:
-    resolution: {integrity: sha512-LbrmJOMUSdEVxIKvdcJzQC+nQhe8FUZQTXQy6+I75skNgn3OoQ0DZA8YnFa7gp8tqtL3KPf1kmo0R5DoApeSGQ==}
-    engines: {node: '>=0.10.0'}
-
-  source-map@0.6.1:
-    resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
-    engines: {node: '>=0.10.0'}
-
-  source-map@0.7.6:
-    resolution: {integrity: sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ==}
-    engines: {node: '>= 12'}
-
   spdx-exceptions@2.5.0:
     resolution: {integrity: sha512-PiU42r+xO4UbUS1buo3LPJkjlO7430Xn5SVAhdpzzsPHsjbYVflnnFdATgabnLude+Cqu25p6N+g2lw/PFsa4w==}
 
@@ -6200,7 +6191,7 @@ snapshots:
       convert-source-map: 1.9.0
       escape-string-regexp: 4.0.0
       find-root: 1.1.0
-      source-map: 0.5.7
+      source-map: source-map-js@1.2.1
       stylis: 4.2.0
     transitivePeerDependencies:
       - supports-color
@@ -10801,7 +10792,7 @@ snapshots:
       semver: 7.7.3
       serve-placeholder: 2.0.2
       serve-static: 2.2.0
-      source-map: 0.7.6
+      source-map: source-map-js@1.2.1
       std-env: 3.10.0
       ufo: 1.6.1
       ultrahtml: 1.6.0
@@ -11603,7 +11594,7 @@ snapshots:
     dependencies:
       open: 8.4.2
       picomatch: 4.0.3
-      source-map: 0.7.6
+      source-map: source-map-js@1.2.1
       yargs: 17.7.2
     optionalDependencies:
       rollup: 4.52.5
@@ -11773,13 +11764,7 @@ snapshots:
   source-map-support@0.5.21:
     dependencies:
       buffer-from: 1.1.2
-      source-map: 0.6.1
-
-  source-map@0.5.7: {}
-
-  source-map@0.6.1: {}
-
-  source-map@0.7.6: {}
+      source-map: source-map-js@1.2.1
 
   spdx-exceptions@2.5.0: {}
 

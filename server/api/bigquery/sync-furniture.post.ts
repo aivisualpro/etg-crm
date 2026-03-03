@@ -87,7 +87,7 @@ function escapeSQL(v: string | undefined): string {
     return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 }
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event: Parameters<Parameters<typeof defineEventHandler>[0]>[0]) => {
     try {
         const query = getQuery(event)
         const partitionIdx = query.partition as string
@@ -253,12 +253,13 @@ export default defineEventHandler(async (event) => {
         }
 
         // ─── Delete old rows for this partition ──────────────────
-        try { await bq.query({ query: `DELETE FROM ${fqTable} WHERE A7 = '${partition.a7}'`, location: 'US' }) }
-        catch { /* ignore */ }
+        try { await bq.query({ query: `DELETE FROM ${fqTable} WHERE A7 = '${partition.a7}'`, location: 'US', maximumBytesBilled: '0' }) }
+        catch { /* ignore — table might not exist yet */ }
 
         // ─── Insert new rows in batches ──────────────────────────
-        const BATCH_SIZE = 200
+        const BATCH_SIZE = 1000
         let inserted = 0
+        let failedBatches = 0
 
         for (let i = 0; i < rows.length; i += BATCH_SIZE) {
             const batch = rows.slice(i, i + BATCH_SIZE)
@@ -266,10 +267,35 @@ export default defineEventHandler(async (event) => {
                 const vals = COLUMNS.map(col => escapeSQL(row[col]))
                 return `(${vals.join(',')})`
             })
-            await bq.query({ query: `INSERT INTO ${fqTable} (${COLUMNS.join(',')}) VALUES ${valueRows.join(',')}`, location: 'US' })
-            inserted += batch.length
-            if (inserted % 2000 === 0 || i + BATCH_SIZE >= rows.length) {
-                console.log(`  📥 ${inserted} / ${rows.length} inserted`)
+
+            // Retry up to 3 times per batch
+            let success = false
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    await bq.query({
+                        query: `INSERT INTO ${fqTable} (${COLUMNS.join(',')}) VALUES ${valueRows.join(',')}`,
+                        location: 'US',
+                        jobTimeoutMs: '120000', // 2 minute timeout per batch
+                    })
+                    inserted += batch.length
+                    success = true
+                    break
+                }
+                catch (batchErr: unknown) {
+                    const msg = batchErr instanceof Error ? batchErr.message : String(batchErr)
+                    if (attempt < 2) {
+                        console.warn(`  ⚠️ Batch ${Math.floor(i / BATCH_SIZE) + 1} attempt ${attempt + 1} failed: ${msg}. Retrying...`)
+                        await new Promise(r => setTimeout(r, 2000 * (attempt + 1))) // exponential backoff
+                    }
+                    else {
+                        console.error(`  ❌ Batch ${Math.floor(i / BATCH_SIZE) + 1} failed after 3 attempts: ${msg}`)
+                        failedBatches++
+                    }
+                }
+            }
+
+            if (inserted % 5000 === 0 || i + BATCH_SIZE >= rows.length) {
+                console.log(`  📥 ${inserted} / ${rows.length} inserted${failedBatches > 0 ? ` (${failedBatches} failed)` : ''}`)
             }
         }
 
