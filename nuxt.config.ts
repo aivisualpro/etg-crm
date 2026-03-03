@@ -7,7 +7,9 @@ export default defineNuxtConfig({
   // Increase server timeout for long-running sync endpoints
   nitro: {
     routeRules: {
-      '/api/bigquery/sync-**': { headers: { 'x-request-timeout': '600000' } },
+      '/api/bigquery/sync-furniture': { headers: { 'x-request-timeout': '600000' } },
+      '/api/bigquery/sync-levels': { headers: { 'x-request-timeout': '600000' } },
+      '/api/bigquery/sync-users': { headers: { 'x-request-timeout': '600000' } },
     },
   },
 
