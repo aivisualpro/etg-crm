@@ -25,7 +25,6 @@ export const navMenu: NavMenu[] = [
       },
       {
         title: 'Entities',
-        titleKey: 'nav.entities',
         icon: 'i-lucide-building-2',
         link: '/admin/entities',
       },

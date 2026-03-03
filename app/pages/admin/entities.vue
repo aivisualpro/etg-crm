@@ -67,6 +67,7 @@ const tabs = computed(() => [
 
 // ─── Column definitions per tab ─────────────────────────────
 const level1Columns = [
+  { key: 'logo', label: 'Logo', width: '60px' },
   { key: 'eng', label: 'Name (English)', width: '200px' },
   { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
   { key: 'A276', label: 'Verified', width: '100px' },
@@ -261,12 +262,25 @@ function verifiedColor(val?: string) {
             class="group"
           >
             <TableCell v-for="col in currentColumns" :key="col.key">
+              <!-- Logo image (Level 1 only) -->
+              <template v-if="col.key === 'logo'">
+                <div class="size-8 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
+                  <img
+                    v-if="row.logo_url"
+                    :src="row.logo_url"
+                    :alt="row.eng"
+                    class="size-8 object-contain"
+                  />
+                  <Icon v-else name="i-lucide-image" class="size-4 text-muted-foreground/40" />
+                </div>
+              </template>
+
               <!-- Name (English) with icon -->
-              <template v-if="col.key === 'eng'">
+              <template v-else-if="col.key === 'eng'">
                 <div class="flex items-center gap-2">
-                  <div class="size-7 rounded-lg bg-gradient-to-br from-blue-500/10 to-violet-500/10 flex items-center justify-center shrink-0">
+                  <div v-if="activeTab !== 'level1'" class="size-7 rounded-lg bg-gradient-to-br from-blue-500/10 to-violet-500/10 flex items-center justify-center shrink-0">
                     <Icon
-                      :name="activeTab === 'level1' ? 'i-lucide-map-pin' : activeTab === 'level2' ? 'i-lucide-building' : 'i-lucide-map'"
+                      :name="activeTab === 'level2' ? 'i-lucide-building' : 'i-lucide-map'"
                       class="size-3.5 text-blue-600 dark:text-blue-400"
                     />
                   </div>

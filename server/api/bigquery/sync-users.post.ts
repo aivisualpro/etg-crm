@@ -37,19 +37,11 @@ export default defineEventHandler(async () => {
             return { success: true, message: 'No users found in AppSheet', count: 0 }
         }
 
-        // ─── Step 2: Delete existing data & re-insert ─────────────
+        // ─── Step 2: Build safe rows ──────────────────────────────
         const bq = useBigQuery()
         const { bigquery } = useRuntimeConfig()
         const dataset = bigquery.dataset || 'etg_database'
-        const projectId = bigquery.projectId || 'flutter-5e2fd'
 
-        // Delete all existing rows
-        await bq.query({
-            query: `DELETE FROM \`${projectId}.${dataset}.${BQ_TABLE}\` WHERE TRUE`,
-            location: 'US',
-        })
-
-        // ─── Step 3: Build safe rows ──────────────────────────────
         const allKeys = new Set<string>()
         for (const row of rows) {
             for (const key of Object.keys(row)) allKeys.add(key)
@@ -59,6 +51,12 @@ export default defineEventHandler(async () => {
         for (const key of allKeys) {
             columnMap[key] = key.replace(/[^a-zA-Z0-9_]/g, '_')
         }
+
+        const schema = [...allKeys].map(name => ({
+            name: columnMap[name],
+            type: 'STRING' as const,
+            mode: 'NULLABLE' as const,
+        }))
 
         const bqRows = rows.map((row: Record<string, unknown>) => {
             const cleaned: Record<string, string | null> = {}
@@ -71,13 +69,20 @@ export default defineEventHandler(async () => {
             return cleaned
         })
 
+        // ─── Step 3: Drop and recreate table ─────────────────────
+        const dsRef = bq.dataset(dataset)
+        const tableRef = dsRef.table(BQ_TABLE)
+        const [exists] = await tableRef.exists()
+        if (exists) await tableRef.delete()
+        await dsRef.createTable(BQ_TABLE, { schema: { fields: schema }, location: 'US' })
+
         // ─── Step 4: Insert in batches ────────────────────────────
-        const table = bq.dataset(dataset).table(BQ_TABLE)
+        const freshTable = dsRef.table(BQ_TABLE)
         const BATCH_SIZE = 500
 
         for (let i = 0; i < bqRows.length; i += BATCH_SIZE) {
             const batch = bqRows.slice(i, i + BATCH_SIZE)
-            await table.insert(batch, {
+            await freshTable.insert(batch, {
                 skipInvalidRows: true,
                 ignoreUnknownValues: true,
             })
