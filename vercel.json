@@ -1,6 +1,6 @@
 {
     "functions": {
-        "api/**/*.ts": {
+        ".vercel/output/functions/**/*.func": {
             "maxDuration": 60
         }
     }
