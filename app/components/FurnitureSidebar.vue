@@ -20,29 +20,23 @@ const { data: treeData } = await useFetch<{
 // App language for label resolution
 const { lang, resolve: resolveLang } = useAppLanguage()
 
-// Fetch level1 labels (both eng + arabic)
-const level1Labels = ref<Record<string, { eng: string, arabic: string }>>({})
-async function fetchLevel1() {
-  try {
-    const data = await $fetch<{ success: boolean, level1: any[] }>('/api/bigquery/levels')
-    if (data.success && data.level1) {
-      for (const r of data.level1) {
-        if (r.A7) level1Labels.value[r.A7] = { eng: r.eng || r.A7, arabic: r.arabic || r.A7 }
-      }
-    }
-  }
-  catch { /* ignore */ }
-}
-fetchLevel1()
+// Use dashboard store for level maps (already cached)
+const { level1Map, level2Map, level3Map, furnitureUsersMap } = useDashboardStore()
 
-function getLabel(key: string): string {
-  const entry = level1Labels.value[key]
-  if (entry) {
-    return lang.value === 'ar' ? (entry.arabic || entry.eng || key) : (entry.eng || key)
+function getLabel(key: string, map?: Record<string, { eng?: string, arabic?: string, logo?: string }>): string {
+  if (map) {
+    const entry = (map as Record<string, any>)[key]
+    if (entry) {
+      return lang.value === 'ar' ? (entry.arabic || entry.eng || key) : (entry.eng || key)
+    }
   }
   // Fallback to language map
   return resolveLang(key)
 }
+
+function getL1(key: string) { return getLabel(key, level1Map.value as any) }
+function getL2(key: string) { return getLabel(key, level2Map.value) }
+function getL3(key: string) { return getLabel(key, level3Map.value) }
 
 const total = computed(() => treeData.value?.total || 0)
 const tree = computed(() => treeData.value?.tree || {})
@@ -111,7 +105,7 @@ function toggleA8(key: string) {
             :class="openA7[a7] ? 'rotate-90' : ''"
           />
           <Icon name="i-lucide-building-2" class="size-3.5 shrink-0" />
-          <span class="truncate text-xs">{{ getLabel(a7) }}</span>
+          <span class="truncate text-xs">{{ getL1(a7) }}</span>
           <span class="ml-auto text-[10px] tabular-nums opacity-50">{{ tree[a7]?.count.toLocaleString() }}</span>
         </button>
 
@@ -139,7 +133,7 @@ function toggleA8(key: string) {
                 class="size-2.5 shrink-0 transition-transform duration-200"
                 :class="openA8[`${a7}/${a8Key}`] ? 'rotate-90' : ''"
               />
-              <span class="truncate">{{ a8Key }}</span>
+              <span class="truncate">{{ getL2(String(a8Key)) }}</span>
               <span class="ml-auto text-[10px] tabular-nums opacity-50">{{ a8Data.count.toLocaleString() }}</span>
             </button>
 
@@ -163,7 +157,7 @@ function toggleA8(key: string) {
                 class="flex items-center gap-1.5 pl-14 pr-3 py-1 rounded-md text-xs transition-colors"
                 :class="isActive(`/admin/furniture/${a7}/${a8Key}/${a9Key}`) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
               >
-                <span class="truncate">{{ a9Key }}</span>
+                <span class="truncate">{{ getL3(String(a9Key)) }}</span>
                 <span class="ml-auto text-[10px] tabular-nums opacity-50">{{ a9Count.toLocaleString() }}</span>
               </NuxtLink>
             </div>
