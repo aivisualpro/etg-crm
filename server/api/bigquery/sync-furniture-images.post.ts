@@ -12,17 +12,20 @@
  *
  * Query params:
  *  - partition: A7 value to process (optional, processes all if not specified)
- *  - batch: batch size (default: 100)
+ *  - batch: batch size (default: 20, max: 50)
  *  - offset: starting offset (default: 0)
  */
 const GCS_BUCKET = 'etg-storage'
 const IMAGE_COLUMNS = ['A69', 'A71', 'A72']
+const MAX_DURATION_MS = 50_000 // Stop at 50s to leave room for cleanup (Vercel 60s limit)
+const CONCURRENCY = 5          // Download/upload this many images in parallel
 
 export default defineEventHandler(async (event) => {
+    const startTime = Date.now()
     try {
         const query = getQuery(event)
         const partitionA7 = (query.partition as string) || ''
-        const batchSize = Math.min(500, Math.max(10, Number(query.batch) || 100))
+        const batchSize = Math.min(50, Math.max(5, Number(query.batch) || 20))
         const offset = Number(query.offset) || 0
 
         const { bigquery } = useRuntimeConfig()
@@ -35,7 +38,6 @@ export default defineEventHandler(async (event) => {
         const conditions: string[] = []
         const params: Record<string, any> = {}
 
-        // Only rows that have image values but no GCS URL yet
         conditions.push(`(
             (A69 IS NOT NULL AND A69 != '' AND (A69_url IS NULL OR A69_url = ''))
             OR (A71 IS NOT NULL AND A71 != '' AND (A71_url IS NULL OR A71_url = ''))
@@ -47,9 +49,9 @@ export default defineEventHandler(async (event) => {
             params.partition = partitionA7
         }
 
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+        const whereClause = `WHERE ${conditions.join(' AND ')}`
 
-        // Get total count of rows needing images
+        // Get total count
         const [countResult] = await bq.query({
             query: `SELECT COUNT(*) as total FROM ${fqTable} ${whereClause}`,
             params,
@@ -58,14 +60,7 @@ export default defineEventHandler(async (event) => {
         const totalNeedingImages = Number(countResult[0]?.total || 0)
 
         if (totalNeedingImages === 0) {
-            return {
-                success: true,
-                message: 'No rows need image URLs',
-                totalNeedingImages: 0,
-                processed: 0,
-                imagesCopied: 0,
-                remaining: 0,
-            }
+            return { success: true, message: 'No rows need image URLs', totalNeedingImages: 0, processed: 0, imagesCopied: 0, remaining: 0 }
         }
 
         // Get batch of rows
@@ -79,14 +74,7 @@ export default defineEventHandler(async (event) => {
         })
 
         if (!rows.length) {
-            return {
-                success: true,
-                message: 'No more rows to process at this offset',
-                totalNeedingImages,
-                processed: 0,
-                imagesCopied: 0,
-                remaining: totalNeedingImages,
-            }
+            return { success: true, message: 'No more rows at this offset', totalNeedingImages, processed: 0, imagesCopied: 0, remaining: totalNeedingImages }
         }
 
         // Step 2: Get Google Drive access
@@ -104,16 +92,14 @@ export default defineEventHandler(async (event) => {
         const imagesFolderId = folderRes.data.files?.[0]?.id
 
         if (!imagesFolderId) {
-            throw createError({
-                statusCode: 404,
-                statusMessage: 'Furniture_Images folder not found in Google Drive',
-            })
+            throw createError({ statusCode: 404, statusMessage: 'Furniture_Images folder not found in Google Drive' })
         }
 
-        // Index all files in Furniture_Images (paginated)
+        // Index files in Furniture_Images (paginated)
         const driveFileMap = new Map<string, { id: string, name: string, mimeType: string }>()
         let pageToken: string | undefined
         do {
+            if (Date.now() - startTime > MAX_DURATION_MS) break // Time guard
             const filesRes = await drive.files.list({
                 q: `'${imagesFolderId}' in parents`,
                 pageSize: 1000,
@@ -130,12 +116,15 @@ export default defineEventHandler(async (event) => {
 
         console.log(`  📂 ${driveFileMap.size} files indexed from Furniture_Images`)
 
-        // Step 3: Process each row — download from Drive, upload to GCS, collect updates
-        let imagesCopied = 0
-        let rowsProcessed = 0
-        const updates: { id: string, a7: string, col: string, url: string }[] = []
+        // Step 3: Build list of images to process
+        interface ImageJob {
+            rowId: string; a7: string; a8: string; a9: string
+            col: string; imgFileName: string; driveFileId: string; mimeType: string
+        }
+        const jobs: ImageJob[] = []
 
         for (const row of rows as Array<Record<string, string>>) {
+            if (Date.now() - startTime > MAX_DURATION_MS) break
             const rowId = row.ID || ''
             const a7 = row.A7 || '_'
             const a8 = row.A8 || '_'
@@ -143,47 +132,62 @@ export default defineEventHandler(async (event) => {
 
             for (const col of IMAGE_COLUMNS) {
                 const urlCol = col + '_url'
-                // Skip if already has URL
                 if (row[urlCol] && row[urlCol].trim()) continue
 
                 const imgPath = row[col]
                 if (!imgPath || (!imgPath.includes('/') && !imgPath.includes('.'))) continue
 
-                // Extract filename from path (could be "folder/filename.jpg" or just "filename.jpg")
                 const imgFileName = imgPath.includes('/') ? (imgPath.split('/').pop() || '') : imgPath
                 if (!imgFileName) continue
 
-                // Try to find in Drive
                 const driveFile = driveFileMap.get(imgFileName)
                 if (!driveFile) continue
 
-                try {
-                    const dlRes = await drive.files.get(
-                        { fileId: driveFile.id, alt: 'media' },
-                        { responseType: 'arraybuffer' },
-                    )
-                    const buf = new Uint8Array(dlRes.data as ArrayBuffer)
-                    if (buf.length > 0) {
-                        const ct = driveFile.mimeType || 'image/jpeg'
-                        // GCS path: furniture/A7/A8/A9/filename
-                        const gcsPath = `furniture/${a7}/${a8}/${a9}/${imgFileName}`
-                        await uploadToGCS(GCS_BUCKET, gcsPath, buf, ct)
-                        updates.push({ id: rowId, a7, col: urlCol, url: gcsPath })
-                        imagesCopied++
-                        if (imagesCopied % 50 === 0) console.log(`  🖼️ ${imagesCopied} images copied...`)
-                    }
-                }
-                catch (err) {
-                    // Skip failed downloads
-                    console.warn(`  ⚠️ Failed to download ${imgFileName}: ${err instanceof Error ? err.message : String(err)}`)
-                }
+                jobs.push({ rowId, a7, a8, a9, col: urlCol, imgFileName, driveFileId: driveFile.id, mimeType: driveFile.mimeType })
             }
-            rowsProcessed++
         }
 
-        // Step 4: Batch update BigQuery with URLs – use DML UPDATE
+        // Step 4: Process jobs with concurrency and time guard
+        let imagesCopied = 0
+        let imagesFailed = 0
+        const updates: { id: string, a7: string, col: string, url: string }[] = []
+
+        async function processJob(job: ImageJob): Promise<void> {
+            try {
+                const dlRes = await drive.files.get(
+                    { fileId: job.driveFileId, alt: 'media' },
+                    { responseType: 'arraybuffer', timeout: 15000 },
+                )
+                const buf = new Uint8Array(dlRes.data as ArrayBuffer)
+                if (buf.length > 0) {
+                    const ct = job.mimeType || 'image/jpeg'
+                    const gcsPath = `furniture/${job.a7}/${job.a8}/${job.a9}/${job.imgFileName}`
+                    await uploadToGCS(GCS_BUCKET, gcsPath, buf, ct)
+                    updates.push({ id: job.rowId, a7: job.a7, col: job.col, url: gcsPath })
+                    imagesCopied++
+                }
+            }
+            catch (err) {
+                imagesFailed++
+                console.warn(`  ⚠️ Failed: ${job.imgFileName}: ${err instanceof Error ? err.message : String(err)}`)
+            }
+        }
+
+        // Process in chunks of CONCURRENCY
+        for (let i = 0; i < jobs.length; i += CONCURRENCY) {
+            if (Date.now() - startTime > MAX_DURATION_MS) {
+                console.log(`  ⏱️ Time limit reached at image ${i}/${jobs.length}`)
+                break
+            }
+            const chunk = jobs.slice(i, i + CONCURRENCY)
+            await Promise.all(chunk.map(processJob))
+            if (imagesCopied % 10 === 0 && imagesCopied > 0) {
+                console.log(`  🖼️ ${imagesCopied} images copied (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`)
+            }
+        }
+
+        // Step 5: Batch update BigQuery with URLs
         if (updates.length > 0) {
-            // Group updates by column for more efficient SQL
             const columnGroups: Record<string, { id: string, a7: string, url: string }[]> = {}
             for (const u of updates) {
                 if (!columnGroups[u.col]) columnGroups[u.col] = []
@@ -191,27 +195,17 @@ export default defineEventHandler(async (event) => {
             }
 
             for (const [col, colUpdates] of Object.entries(columnGroups)) {
-                // Build a CASE statement for bulk update
                 const caseParts = colUpdates.map(u =>
                     `WHEN ID = '${u.id.replace(/'/g, "\\'")}' AND A7 = '${u.a7.replace(/'/g, "\\'")}' THEN '${u.url.replace(/'/g, "\\'")}'`,
                 ).join('\n            ')
 
-                const idList = colUpdates.map(u =>
-                    `'${u.id.replace(/'/g, "\\'")}'`,
-                ).join(',')
+                const idList = colUpdates.map(u => `'${u.id.replace(/'/g, "\\'")}'`).join(',')
 
                 try {
                     await bq.query({
-                        query: `
-                            UPDATE ${fqTable}
-                            SET ${col} = CASE
-                                ${caseParts}
-                                ELSE ${col}
-                            END
-                            WHERE ID IN (${idList})
-                        `,
+                        query: `UPDATE ${fqTable} SET ${col} = CASE ${caseParts} ELSE ${col} END WHERE ID IN (${idList})`,
                         location: 'US',
-                        jobTimeoutMs: 120000,
+                        jobTimeoutMs: 30000,
                     })
                 }
                 catch (err) {
@@ -220,17 +214,20 @@ export default defineEventHandler(async (event) => {
             }
         }
 
-        const remaining = totalNeedingImages - offset - rowsProcessed
+        const remaining = totalNeedingImages - offset - (rows as any[]).length
+        const elapsed = Math.round((Date.now() - startTime) / 1000)
 
         return {
             success: true,
-            message: `Processed ${rowsProcessed} rows, copied ${imagesCopied} images`,
+            message: `Processed ${(rows as any[]).length} rows, copied ${imagesCopied} images in ${elapsed}s`,
             totalNeedingImages,
-            processed: rowsProcessed,
+            processed: (rows as any[]).length,
             imagesCopied,
+            imagesFailed,
             offset,
             remaining: Math.max(0, remaining),
             nextOffset: remaining > 0 ? offset + batchSize : null,
+            elapsed: `${elapsed}s`,
         }
     }
     catch (error: unknown) {

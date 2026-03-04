@@ -296,7 +296,7 @@ export function useSyncProgress() {
         try {
             let totalCopied = 0
             let offset = 0
-            const batchSize = 100
+            const batchSize = 20
             let remaining = 1
 
             while (remaining > 0) {
