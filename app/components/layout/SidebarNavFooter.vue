@@ -22,6 +22,14 @@ const showModalTheme = ref(false)
 
 <template>
   <SidebarMenu>
+    <!-- Theme button in sidebar bottom -->
+    <SidebarMenuItem>
+      <SidebarMenuButton size="sm" @click="showModalTheme = true" class="text-muted-foreground hover:text-foreground">
+        <Icon name="i-lucide-paintbrush" class="size-4" />
+        <span>Theme</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
@@ -37,7 +45,8 @@ const showModalTheme = ref(false)
             </Avatar>
             <div class="grid flex-1 text-left text-sm leading-tight">
               <span class="truncate font-semibold">{{ user.name }}</span>
-              <span class="truncate text-xs">{{ user.role }}</span>
+              <span v-if="user.role" class="truncate text-[10px] text-muted-foreground">{{ user.role }}</span>
+              <span v-else class="truncate text-[10px] text-muted-foreground">{{ user.email }}</span>
             </div>
             <Icon name="i-lucide-chevrons-up-down" class="ml-auto size-4" />
           </SidebarMenuButton>
@@ -58,21 +67,10 @@ const showModalTheme = ref(false)
               <div class="grid flex-1 text-left text-sm leading-tight">
                 <span class="truncate font-semibold">{{ user.name }}</span>
                 <span class="truncate text-xs text-muted-foreground">{{ user.email }}</span>
+                <span v-if="user.role" class="truncate text-[10px] text-muted-foreground/70">{{ user.role }}</span>
               </div>
             </div>
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem>
-              <Icon name="i-lucide-badge-check" />
-              Account
-            </DropdownMenuItem>
-
-            <DropdownMenuItem @click="showModalTheme = true">
-              <Icon name="i-lucide-paintbrush" />
-              Theme
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem @click="handleLogout">
             <Icon name="i-lucide-log-out" />
@@ -95,7 +93,3 @@ const showModalTheme = ref(false)
     </DialogContent>
   </Dialog>
 </template>
-
-<style scoped>
-
-</style>

@@ -27,7 +27,8 @@ export default defineEventHandler(async (event) => {
     // Resolve coded fields to readable labels
     const resolved = (rows as any[]).map(row => {
       const r = { ...row }
-      // A200 = Role code → label
+      // A200 = Role code → label (keep raw code for client-side language resolution)
+      if (r.A200) r.A200_raw = r.A200
       if (r.A200 && langMap[r.A200]) r.A200 = langMap[r.A200]
       // A204 = Status code → label (sometimes it's already "Active"/"Inactive")
       if (r.A204 && langMap[r.A204]) r.A204 = langMap[r.A204]

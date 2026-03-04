@@ -41,12 +41,16 @@ const teams: {
 const { user: authUser } = useAuth()
 const store = useDashboardStore()
 store.init()
+const { resolve: resolveLang } = useAppLanguage()
 
 const userRole = computed(() => {
   const email = (authUser.value?.email || '').toLowerCase()
   if (!email) return ''
   const found = store.users.value.find((u: any) => (u.Email || '').toLowerCase() === email)
-  return found?.Role || ''
+  if (!found) return ''
+  // Use the raw A200 code for language-aware resolution
+  const rawCode = found.A200_raw || found.A200
+  return rawCode ? resolveLang(rawCode) : ''
 })
 
 const user = computed(() => ({
