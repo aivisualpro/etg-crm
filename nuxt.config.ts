@@ -6,6 +6,12 @@ export default defineNuxtConfig({
 
   // Increase server timeout for long-running sync endpoints
   nitro: {
+    preset: 'vercel',
+    vercel: {
+      functions: {
+        maxDuration: 60,
+      },
+    },
     routeRules: {
       '/api/bigquery/sync-furniture': { headers: { 'x-request-timeout': '600000' } },
       '/api/bigquery/sync-levels': { headers: { 'x-request-timeout': '600000' } },

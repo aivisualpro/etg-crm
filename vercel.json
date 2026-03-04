@@ -1,7 +1,1 @@
-{
-    "functions": {
-        ".vercel/output/functions/**/*.func": {
-            "maxDuration": 60
-        }
-    }
-}
+{}
