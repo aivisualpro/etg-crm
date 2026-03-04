@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import NumberFlow from '@number-flow/vue'
+import { toast } from 'vue-sonner'
 
 const { setHeader } = usePageHeader()
 setHeader({ title: 'Furniture Report', icon: 'i-lucide-bar-chart-3', description: 'Furniture analytics & insights' })
 
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
+
+const { user: authUser } = useAuth()
 
 const { resolve: resolveLang, lang: appLang } = useAppLanguage()
 
@@ -173,6 +176,112 @@ function filteredSearchOpts(opts: { value: string, label: string, count: number 
   return opts.filter(o => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
 }
 
+// ─── Filter Templates (stored in etgusers table) ────────────
+const savedTemplates = ref<any[]>([])
+const loadingTemplates = ref(false)
+const showSaveDialog = ref(false)
+const templateName = ref('')
+const savingTemplate = ref(false)
+const showTemplatesDropdown = ref(false)
+
+function getCurrentFilters() {
+  return {
+    selLevel1: selLevel1.value,
+    selLevel2: selLevel2.value,
+    selLevel3: selLevel3.value,
+    selSubCat: selSubCat.value,
+    selCondition: selCondition.value,
+    selUser: selUser.value,
+    dateFrom: dateFrom.value,
+    dateTo: dateTo.value,
+  }
+}
+
+function applyTemplate(t: any) {
+  try {
+    const f = typeof t.filters === 'string' ? JSON.parse(t.filters) : t.filters
+    selLevel1.value = f.selLevel1 || []
+    selLevel2.value = f.selLevel2 || []
+    selLevel3.value = f.selLevel3 || []
+    selSubCat.value = f.selSubCat || []
+    selCondition.value = f.selCondition || []
+    selUser.value = f.selUser || []
+    dateFrom.value = f.dateFrom || ''
+    dateTo.value = f.dateTo || ''
+    showTemplatesDropdown.value = false
+    toast.success(`Template "${t.name}" applied`)
+  }
+  catch { toast.error('Failed to apply template') }
+}
+
+async function loadTemplates() {
+  const email = authUser.value?.email
+  if (!email) return
+  loadingTemplates.value = true
+  try {
+    const data = await $fetch<{ success: boolean, templates: any[] }>('/api/bigquery/user-filter-templates', {
+      query: { email, route: '/reports/furniture' },
+    })
+    if (data.success) savedTemplates.value = data.templates
+  }
+  catch { /* silent */ }
+  finally { loadingTemplates.value = false }
+}
+
+async function saveTemplate() {
+  const email = authUser.value?.email
+  if (!templateName.value.trim() || !email) return
+  savingTemplate.value = true
+  try {
+    const res = await $fetch<{ success: boolean, template: any }>('/api/bigquery/user-filter-templates', {
+      method: 'POST',
+      body: {
+        email,
+        name: templateName.value.trim(),
+        route: '/reports/furniture',
+        filters: getCurrentFilters(),
+      },
+    })
+    if (res.success) {
+      toast.success(`Template "${templateName.value.trim()}" saved!`)
+      showSaveDialog.value = false
+      templateName.value = ''
+      savedTemplates.value.push(res.template)
+    }
+  }
+  catch { toast.error('Failed to save template') }
+  finally { savingTemplate.value = false }
+}
+
+async function deleteTemplate(id: string) {
+  const email = authUser.value?.email
+  if (!email) return
+  try {
+    await $fetch('/api/bigquery/user-filter-templates', {
+      method: 'DELETE',
+      body: { email, id },
+    })
+    savedTemplates.value = savedTemplates.value.filter(t => t.id !== id)
+    toast.success('Template deleted')
+  }
+  catch { toast.error('Failed to delete template') }
+}
+
+// Close dropdown on click outside
+const templatesRef = ref<HTMLElement | null>(null)
+function handleGlobalClick(e: MouseEvent) {
+  if (templatesRef.value && !templatesRef.value.contains(e.target as Node)) {
+    showTemplatesDropdown.value = false
+  }
+}
+onMounted(() => {
+  loadTemplates()
+  document.addEventListener('click', handleGlobalClick)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', handleGlobalClick)
+})
+
 // ─── Filtered data ──────────────────────────────────────────
 function parseTS(val: string | undefined): Date | null {
   if (!val) return null
@@ -274,6 +383,90 @@ function condColor(c: string) {
         <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
           {{ filtered.length.toLocaleString() }} of {{ rows.length.toLocaleString() }}
         </p>
+
+        <!-- Templates dropdown -->
+        <div ref="templatesRef" class="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 text-xs gap-1.5"
+            @click="showTemplatesDropdown = !showTemplatesDropdown"
+          >
+            <Icon name="i-lucide-bookmark" class="size-3" />
+            Templates
+            <Icon name="i-lucide-chevron-down" class="size-3 text-muted-foreground" />
+          </Button>
+
+          <!-- Dropdown panel -->
+          <Transition
+            enter-active-class="transition duration-150 ease-out"
+            enter-from-class="opacity-0 scale-95 translate-y-1"
+            enter-to-class="opacity-100 scale-100 translate-y-0"
+            leave-active-class="transition duration-100 ease-in"
+            leave-from-class="opacity-100 scale-100 translate-y-0"
+            leave-to-class="opacity-0 scale-95 translate-y-1"
+          >
+            <div
+              v-if="showTemplatesDropdown"
+              class="absolute right-0 top-10 z-50 w-[280px] rounded-xl border bg-popover shadow-xl overflow-hidden"
+            >
+              <!-- Header -->
+              <div class="flex items-center justify-between px-3 py-2.5 border-b bg-muted/30">
+                <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Saved Templates</span>
+                <button
+                  v-if="hasFilters"
+                  class="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 font-medium transition-colors"
+                  @click="showSaveDialog = true; showTemplatesDropdown = false"
+                >
+                  <Icon name="i-lucide-plus" class="size-3" />
+                  Save Current
+                </button>
+              </div>
+
+              <!-- Loading -->
+              <div v-if="loadingTemplates" class="flex items-center justify-center py-6">
+                <Icon name="i-lucide-loader-2" class="size-4 animate-spin text-muted-foreground/40" />
+              </div>
+
+              <!-- Empty -->
+              <div v-else-if="savedTemplates.length === 0" class="py-6 text-center">
+                <div class="flex items-center justify-center size-10 rounded-xl bg-muted/50 mx-auto mb-2">
+                  <Icon name="i-lucide-bookmark-x" class="size-5 text-muted-foreground/30" />
+                </div>
+                <p class="text-[11px] text-muted-foreground">No saved templates yet</p>
+                <p class="text-[10px] text-muted-foreground/50 mt-0.5">Set filters, then click "Save Current"</p>
+              </div>
+
+              <!-- Template list -->
+              <div v-else class="max-h-[240px] overflow-y-auto">
+                <button
+                  v-for="t in savedTemplates"
+                  :key="t.id"
+                  class="group w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/30 last:border-b-0"
+                  @click.stop="applyTemplate(t)"
+                >
+                  <div class="flex items-center justify-center size-7 rounded-lg bg-primary/10 shrink-0">
+                    <Icon name="i-lucide-bookmark" class="size-3.5 text-primary" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-medium truncate">{{ t.name }}</p>
+                    <p class="text-[10px] text-muted-foreground/60">
+                      {{ t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '' }}
+                    </p>
+                  </div>
+                  <button
+                    class="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-destructive/10 transition-all shrink-0"
+                    title="Delete template"
+                    @click.stop="deleteTemplate(t.id)"
+                  >
+                    <Icon name="i-lucide-trash-2" class="size-3 text-destructive" />
+                  </button>
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+
         <Button v-if="hasFilters" variant="ghost" size="sm" class="h-8 text-xs gap-1" @click="clearAllFilters">
           <Icon name="i-lucide-x" class="size-3" /> Clear
         </Button>
@@ -281,6 +474,82 @@ function condColor(c: string) {
           <Icon :name="sidebarCollapsed ? 'i-lucide-panel-right-open' : 'i-lucide-panel-right-close'" class="size-3.5" />
         </Button>
       </div>
+    </Teleport>
+
+    <!-- Save Template Dialog -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div v-if="showSaveDialog" class="fixed inset-0 z-[100] flex items-center justify-center">
+          <!-- Backdrop -->
+          <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showSaveDialog = false" />
+
+          <!-- Dialog -->
+          <div class="relative w-[380px] bg-card rounded-2xl shadow-2xl border overflow-hidden">
+            <!-- Header -->
+            <div class="px-5 pt-5 pb-3">
+              <div class="flex items-center gap-3 mb-1">
+                <div class="flex items-center justify-center size-9 rounded-xl bg-primary/10">
+                  <Icon name="i-lucide-bookmark-plus" class="size-4.5 text-primary" />
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold">Save Filter Template</h3>
+                  <p class="text-[11px] text-muted-foreground">Save your current filter settings for quick access later</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Body -->
+            <div class="px-5 pb-3">
+              <label class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">Template Name</label>
+              <Input
+                v-model="templateName"
+                placeholder="e.g. Building A — Good condition"
+                class="h-9 text-sm"
+                autofocus
+                @keydown.enter="saveTemplate"
+              />
+
+              <!-- Active filters summary -->
+              <div class="mt-3 p-3 rounded-lg bg-muted/40 border border-border/30">
+                <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Active Filters</p>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="v in selLevel1" :key="'l1-'+v" class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 text-[9px] font-medium">{{ resolveL1(v) }}</span>
+                  <span v-for="v in selLevel2" :key="'l2-'+v" class="inline-flex items-center px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 text-[9px] font-medium">{{ v }}</span>
+                  <span v-for="v in selLevel3" :key="'l3-'+v" class="inline-flex items-center px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-600 text-[9px] font-medium">{{ resolveL3(v) }}</span>
+                  <span v-for="v in selSubCat" :key="'sc-'+v" class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 text-[9px] font-medium">{{ resolveSC(v) }}</span>
+                  <span v-for="v in selCondition" :key="'co-'+v" class="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-[9px] font-medium">{{ resolveLang(v) }}</span>
+                  <span v-for="v in selUser" :key="'us-'+v" class="inline-flex items-center px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-600 text-[9px] font-medium">{{ resolveUser(v) }}</span>
+                  <span v-if="dateFrom" class="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[9px] font-medium">From: {{ dateFrom }}</span>
+                  <span v-if="dateTo" class="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[9px] font-medium">To: {{ dateTo }}</span>
+                  <span v-if="!hasFilters" class="text-[10px] text-muted-foreground/50 italic">No filters active</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="flex items-center justify-end gap-2 px-5 py-4 border-t bg-muted/20">
+              <Button variant="outline" size="sm" class="h-8 text-xs" @click="showSaveDialog = false">Cancel</Button>
+              <Button
+                size="sm"
+                class="h-8 text-xs gap-1.5"
+                :disabled="!templateName.trim() || savingTemplate"
+                @click="saveTemplate"
+              >
+                <Icon v-if="savingTemplate" name="i-lucide-loader-2" class="size-3 animate-spin" />
+                <Icon v-else name="i-lucide-save" class="size-3" />
+                {{ savingTemplate ? 'Saving...' : 'Save Template' }}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </Teleport>
 
     <!-- Filter Sidebar -->
