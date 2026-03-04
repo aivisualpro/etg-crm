@@ -337,7 +337,7 @@ export function useSyncProgress() {
                     : 100
                 _syncState.percent = percentDone
                 _syncState.rowsFetched = totalCopied
-                _syncState.currentLabel = `${totalCopied.toLocaleString()}/${result.totalNeedingImages.toLocaleString()}/${remaining.toLocaleString()} (${percentDone}%)`
+                _syncState.currentLabel = `Synced ${totalCopied.toLocaleString()} / Total ${result.totalNeedingImages.toLocaleString()} / Remaining ${remaining.toLocaleString()} (${percentDone}%)`
 
                 if (result.nextOffset !== null) {
                     offset = result.nextOffset

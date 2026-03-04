@@ -18,8 +18,8 @@ const total = ref(0)
 const totalPages = ref(0)
 const allLoaded = ref(false)
 
-// View mode: table or gallery
-const viewMode = ref<'table' | 'gallery'>('table')
+// View mode: table or gallery (persisted across navigation via useState)
+const viewMode = useState<'table' | 'gallery'>('furniture-view-mode', () => 'table')
 
 // Sync / actions state
 const syncing = ref(false)
@@ -155,6 +155,14 @@ function setupScrollObserver() {
 // Set up observer once loading finishes (sentinel appears in DOM)
 watch(loading, (val) => {
   if (!val) setupScrollObserver()
+})
+// After each append, re-setup observer
+watch(loadingMore, (val) => {
+  if (!val) nextTick(() => setupScrollObserver())
+})
+// Also re-setup observer when switching view modes (DOM refs change)
+watch(viewMode, () => {
+  nextTick(() => setupScrollObserver())
 })
 onUnmounted(() => {
   scrollObserver?.disconnect()
@@ -443,11 +451,14 @@ function toggleRoom(roomKey: string) {
   expandedRooms.value = s
 }
 
+// Build gallery from loaded rows — only items with at least one cloud bucket image
 const galleryGroups = computed<GalleryFloor[]>(() => {
   const floorMap: Record<string, Record<string, any[]>> = {}
   for (const row of sortedRows.value) {
     // Only include items that have at least one cloud bucket image
-    const hasImage = (row.A69_url && row.A69_url.trim()) || (row.A71_url && row.A71_url.trim()) || (row.A72_url && row.A72_url.trim())
+    const hasImage = (row.A69_url && String(row.A69_url).trim())
+      || (row.A71_url && String(row.A71_url).trim())
+      || (row.A72_url && String(row.A72_url).trim())
     if (!hasImage) continue
 
     const floor = row.A8 || '__unknown__'
@@ -468,7 +479,6 @@ const galleryGroups = computed<GalleryFloor[]>(() => {
       })
       totalCount += items.length
     }
-    // Sort rooms by label
     roomList.sort((a, b) => a.label.localeCompare(b.label))
     floors.push({
       key: floorKey,
@@ -477,7 +487,6 @@ const galleryGroups = computed<GalleryFloor[]>(() => {
       totalCount,
     })
   }
-  // Sort floors by label
   floors.sort((a, b) => a.label.localeCompare(b.label))
   return floors
 })
@@ -627,18 +636,9 @@ function statusLabel(status: string) {
         </p>
 
         <!-- Sync progress (in header) -->
-        <div v-if="syncState.active" class="flex items-center gap-2 min-w-0 shrink-0">
-          <div class="flex items-center gap-1.5">
-            <Icon name="i-lucide-loader-2" class="size-3 animate-spin text-blue-500 shrink-0" />
-            <span class="text-[11px] text-muted-foreground whitespace-nowrap max-w-[200px] truncate">{{ syncState.currentLabel }}</span>
-          </div>
-          <div class="h-1.5 w-20 sm:w-28 rounded-full bg-muted overflow-hidden shrink-0">
-            <div
-              class="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500 ease-out"
-              :style="{ width: `${syncState.percent}%` }"
-            />
-          </div>
-          <span class="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">{{ syncState.percent }}%</span>
+        <div v-if="syncState.active" class="flex items-center gap-1.5 min-w-0 shrink-0">
+          <Icon name="i-lucide-loader-2" class="size-3 animate-spin text-blue-500 shrink-0" />
+          <span class="text-[11px] text-muted-foreground whitespace-nowrap tabular-nums">{{ syncState.currentLabel }}</span>
         </div>
 
         <!-- Health Check Button -->
@@ -1284,7 +1284,7 @@ function statusLabel(status: string) {
           </div>
         </div>
       </div>
-      <!-- Infinite scroll sentinel -->
+      <!-- Infinite scroll sentinel (hidden) -->
       <div ref="scrollSentinelRef" class="h-1" />
     </div>
 
