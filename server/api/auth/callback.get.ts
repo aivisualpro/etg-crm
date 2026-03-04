@@ -45,22 +45,26 @@ export default defineEventHandler(async (event) => {
         const dataset = bqConfig.dataset || 'etg_database'
         const project = bqConfig.projectId || 'flutter-5e2fd'
 
-        const checkSql = `SELECT Email FROM \`${project}.${dataset}.etgUsers\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
-        const existingRows = await queryBigQuery(checkSql, { email })
+        // First check if the email exists at all
+        const checkSql = `SELECT Email, Status FROM \`${project}.${dataset}.etgUsers\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
+        const existingRows = await queryBigQuery<{ Email: string, Status: boolean | string }>(checkSql, { email })
 
         if (existingRows.length === 0) {
-          // User NOT in the system — redirect back to login with an error
+          // Email NOT in the system at all
           const errorMsg = encodeURIComponent(email)
           return sendRedirect(event, `/login?error=unauthorized&email=${errorMsg}`)
         }
 
-        // ── User exists — update Status = TRUE ──
-        const updateSql = `
-          UPDATE \`${project}.${dataset}.etgUsers\`
-          SET Status = TRUE
-          WHERE LOWER(Email) = LOWER(@email)
-        `
-        await queryBigQuery(updateSql, { email })
+        // Check if user's Status is active
+        const userRow = existingRows[0]
+        const status = userRow.Status
+        const isActive = status === true || status === 'true' || status === 'Active' || status === 'active'
+
+        if (!isActive) {
+          // User exists but is inactive — redirect with specific error
+          const errorMsg = encodeURIComponent(email)
+          return sendRedirect(event, `/login?error=inactive&email=${errorMsg}`)
+        }
       }
       catch (err: unknown) {
         console.error('[Auth] User lookup failed:', err)

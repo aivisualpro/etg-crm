@@ -125,6 +125,23 @@ useSeoMeta({
             </div>
           </Transition>
 
+          <Transition name="error-slide">
+            <div v-if="showError && authError === 'inactive'" class="login-error">
+              <div class="login-error__icon">
+                <ShieldX class="size-5" />
+              </div>
+              <div class="login-error__content">
+                <p class="login-error__title">Account Deactivated</p>
+                <p class="login-error__msg">
+                  <strong>{{ rejectedEmail }}</strong> account is currently inactive. Please contact your administrator to reactivate your access.
+                </p>
+              </div>
+              <button class="login-error__close" @click="dismissError">
+                <X class="size-4" />
+              </button>
+            </div>
+          </Transition>
+
           <div class="login-form__header">
             <h1 class="text-2xl font-bold tracking-tight text-foreground">
               Welcome back
