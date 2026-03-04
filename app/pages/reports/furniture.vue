@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import NumberFlow from '@number-flow/vue'
-import { toast } from 'vue-sonner'
 
 const { setHeader } = usePageHeader()
 setHeader({ title: 'Furniture Report', icon: 'i-lucide-bar-chart-3', description: 'Furniture analytics & insights' })
@@ -14,12 +13,16 @@ const { resolve: resolveLang, lang: appLang } = useAppLanguage()
 const {
   level1Map, level2Map, level3Map, subCatMap, assetDescMap,
   furnitureUsersMap: usersMap, init,
+  // Furniture rows cache — lazy-loaded, persists across navigations
+  furnitureRows, furnitureRowsReady, furnitureRowsFetching, furnitureRowsProgress,
+  ensureFurnitureRows,
 } = useDashboardStore()
 init()
+ensureFurnitureRows()
 
-// ─── Data ──────────────────────────────────────────────────
-const loading = ref(true)
-const rows = ref<any[]>([])
+// ─── Data (reads from global cache) ──────────────────────────
+const loading = computed(() => furnitureRowsFetching.value && !furnitureRowsReady.value)
+const rows = computed(() => furnitureRows.value)
 const searchQuery = ref('')
 const sidebarCollapsed = ref(false)
 
@@ -36,46 +39,7 @@ const dateTo = ref('')
 // Per-filter search
 const filterSearch = reactive({ level1: '', level2: '', level3: '', subCat: '', condition: '', user: '' })
 
-// ─── Fetch furniture rows (report needs ALL rows) ───────────
-const BATCH = 5000
-const loadProgress = ref(0) // 0-100
 
-async function fetchAll() {
-  loading.value = true
-  loadProgress.value = 0
-  try {
-    // First request to get total count + first batch
-    const first = await $fetch<{ success: boolean, rows: any[], total: number, totalPages: number }>('/api/bigquery/furniture', { params: { limit: BATCH, page: 1 } })
-    rows.value = first.rows || []
-    const totalRows = first.total || 0
-    const totalPages = Math.ceil(totalRows / BATCH)
-    loadProgress.value = Math.round((1 / totalPages) * 100)
-
-    if (totalPages > 1) {
-      // Fetch remaining pages in parallel waves of 6
-      const WAVE_SIZE = 6
-      for (let start = 2; start <= totalPages; start += WAVE_SIZE) {
-        const wave = []
-        for (let p = start; p <= Math.min(start + WAVE_SIZE - 1, totalPages); p++) {
-          wave.push(
-            $fetch<{ rows: any[] }>('/api/bigquery/furniture', { params: { limit: BATCH, page: p } }),
-          )
-        }
-        const results = await Promise.all(wave)
-        for (const pg of results) {
-          rows.value.push(...(pg.rows || []))
-        }
-        loadProgress.value = Math.round((Math.min(start + WAVE_SIZE - 1, totalPages) / totalPages) * 100)
-      }
-    }
-    loadProgress.value = 100
-  }
-  catch (e: any) {
-    toast.error('Failed to load report data')
-  }
-  finally { loading.value = false }
-}
-fetchAll()
 
 // ─── Resolve helpers ────────────────────────────────────────
 function rl(map: Record<string, { eng: string, arabic: string }>, key: string): string {
@@ -248,13 +212,17 @@ const kpis = computed(() => {
   const entities: Set<string> = new Set()
   const users: Set<string> = new Set()
   for (const r of recs) {
-    if (r.A75) conditions[r.A75] = (conditions[r.A75] || 0) + 1
+    if (r.A75) {
+      // Resolve language ID to display label before counting
+      const label = resolveLang(r.A75)
+      conditions[label] = (conditions[label] || 0) + 1
+    }
     if (r.A7) entities.add(r.A7)
     if (r.A2) users.add(r.A2)
   }
-  const goodCount = (conditions['Good'] || 0) + (conditions['3'] || 0)
+  const goodCount = (conditions['Good'] || 0) + (conditions['Excellent'] || 0) + (conditions['3'] || 0)
   const fairCount = (conditions['Fair'] || 0) + (conditions['2'] || 0)
-  const poorCount = (conditions['Poor'] || 0) + (conditions['1'] || 0)
+  const poorCount = (conditions['Poor'] || 0) + (conditions['Damaged'] || 0) + (conditions['1'] || 0)
   return { total, goodCount, fairCount, poorCount, entityCount: entities.size, userCount: users.size }
 })
 
@@ -286,9 +254,10 @@ const byEntity = computed(() => {
 
 // Condition color
 function condColor(c: string) {
-  if (c === 'Good' || c === '3') return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20'
-  if (c === 'Fair' || c === '2') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/20'
-  if (c === 'Poor' || c === '1') return 'bg-red-500/10 text-red-600 dark:text-red-400 ring-red-500/20'
+  const label = resolveLang(c)
+  if (label === 'Good' || label === 'Excellent' || label === '3') return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20'
+  if (label === 'Fair' || label === '2') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/20'
+  if (label === 'Poor' || label === 'Damaged' || label === '1') return 'bg-red-500/10 text-red-600 dark:text-red-400 ring-red-500/20'
   return 'bg-muted text-muted-foreground ring-border'
 }
 </script>
@@ -385,22 +354,23 @@ function condColor(c: string) {
 
     <!-- Main content -->
     <div class="flex-1 min-w-0 overflow-y-auto">
-      <!-- Loading -->
+      <!-- Loading (only shows on very first visit while cache is being built) -->
       <div v-if="loading" class="flex-1 flex items-center justify-center py-40">
         <div class="flex flex-col items-center gap-4 text-muted-foreground">
           <div class="size-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-violet-500/20 flex items-center justify-center">
             <Icon name="i-lucide-loader-2" class="size-7 animate-spin text-blue-500" />
           </div>
           <p class="text-sm font-medium">Loading furniture report...</p>
-          <div v-if="loadProgress > 0" class="flex flex-col items-center gap-2">
+          <div v-if="furnitureRowsProgress > 0" class="flex flex-col items-center gap-2">
             <div class="h-1.5 w-48 rounded-full bg-muted overflow-hidden">
               <div
                 class="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500 ease-out"
-                :style="{ width: `${loadProgress}%` }"
+                :style="{ width: `${furnitureRowsProgress}%` }"
               />
             </div>
-            <p class="text-xs tabular-nums text-muted-foreground">{{ rows.length.toLocaleString() }} rows loaded · {{ loadProgress }}%</p>
+            <p class="text-xs tabular-nums text-muted-foreground">{{ furnitureRows.length.toLocaleString() }} rows loaded · {{ furnitureRowsProgress }}%</p>
           </div>
+          <p class="text-[10px] text-muted-foreground/60">This only happens once — subsequent visits are instant.</p>
         </div>
       </div>
 
@@ -514,10 +484,10 @@ function condColor(c: string) {
                     <TableCell class="text-[11px]" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveAD(row.A67) }}</TableCell>
                     <TableCell>
                       <span
-                        v-if="row.A68"
+                        v-if="row.A75"
                         class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium ring-1"
-                        :class="condColor(row.A68)"
-                      >{{ resolveLang(row.A68) }}</span>
+                        :class="condColor(row.A75)"
+                      >{{ resolveLang(row.A75) }}</span>
                       <span v-else class="text-muted-foreground text-[11px]">—</span>
                     </TableCell>
                     <TableCell class="text-[11px]">{{ resolveUser(row.A2) || '—' }}</TableCell>

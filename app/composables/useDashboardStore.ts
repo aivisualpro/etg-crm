@@ -38,6 +38,53 @@ const _ready = ref(false)
 const _fetching = ref(false)
 const _lastFetched = ref(0)
 
+// ─── Furniture rows cache (lazy-loaded, not at startup) ─────
+const _furnitureRows = ref<any[]>([])
+const _furnitureRowsReady = ref(false)
+const _furnitureRowsFetching = ref(false)
+const _furnitureRowsProgress = ref(0)
+let _furnitureRowsRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+const FURNITURE_BATCH = 5000
+
+async function _fetchFurnitureRows() {
+    if (_furnitureRowsFetching.value) return
+    _furnitureRowsFetching.value = true
+    _furnitureRowsProgress.value = 0
+    try {
+        const first = await $fetch<{ success: boolean, rows: any[], total: number }>('/api/bigquery/furniture', { params: { limit: FURNITURE_BATCH, page: 1 } })
+        const allRows: any[] = first.rows || []
+        const totalRows = first.total || 0
+        const totalPages = Math.ceil(totalRows / FURNITURE_BATCH)
+        _furnitureRowsProgress.value = Math.round((1 / Math.max(totalPages, 1)) * 100)
+
+        if (totalPages > 1) {
+            const WAVE = 6
+            for (let start = 2; start <= totalPages; start += WAVE) {
+                const wave = []
+                for (let p = start; p <= Math.min(start + WAVE - 1, totalPages); p++) {
+                    wave.push(
+                        $fetch<{ rows: any[] }>('/api/bigquery/furniture', { params: { limit: FURNITURE_BATCH, page: p } }),
+                    )
+                }
+                const results = await Promise.all(wave)
+                for (const pg of results) allRows.push(...(pg.rows || []))
+                _furnitureRowsProgress.value = Math.round((Math.min(start + WAVE - 1, totalPages) / totalPages) * 100)
+            }
+        }
+
+        _furnitureRows.value = allRows
+        _furnitureRowsProgress.value = 100
+    }
+    catch (e) {
+        console.error('Failed to fetch furniture rows:', e)
+    }
+    finally {
+        _furnitureRowsFetching.value = false
+        _furnitureRowsReady.value = true
+    }
+}
+
 let _refreshTimer: ReturnType<typeof setInterval> | null = null
 
 function _buildMaps() {
@@ -204,6 +251,28 @@ export function useDashboardStore() {
         await _fetchAll()
     }
 
+    /**
+     * Ensure furniture rows are loaded (lazy — only fetches on first call).
+     * Returns instantly if already cached. Call from any furniture page.
+     */
+    function ensureFurnitureRows() {
+        if (_furnitureRowsReady.value || _furnitureRowsFetching.value) return
+        _fetchFurnitureRows()
+
+        // Auto-refresh furniture rows every 10 minutes
+        if (import.meta.client && !_furnitureRowsRefreshTimer) {
+            _furnitureRowsRefreshTimer = setInterval(() => {
+                _fetchFurnitureRows()
+            }, 10 * 60 * 1000)
+        }
+    }
+
+    /** Force-refresh furniture rows */
+    async function refreshFurnitureRows() {
+        _furnitureRowsReady.value = false
+        await _fetchFurnitureRows()
+    }
+
     return {
         // Reactive data
         projects: readonly(_projects),
@@ -223,6 +292,12 @@ export function useDashboardStore() {
         assetDescMap: readonly(_assetDescMap),
         furnitureUsersMap: readonly(_furnitureUsersMap),
 
+        // Furniture rows cache (lazy-loaded)
+        furnitureRows: readonly(_furnitureRows),
+        furnitureRowsReady: readonly(_furnitureRowsReady),
+        furnitureRowsFetching: readonly(_furnitureRowsFetching),
+        furnitureRowsProgress: readonly(_furnitureRowsProgress),
+
         // Raw lists for admin pages
         level1List: readonly(_level1List),
         level2List: readonly(_level2List),
@@ -240,5 +315,7 @@ export function useDashboardStore() {
         // Actions
         init,
         refresh,
+        ensureFurnitureRows,
+        refreshFurnitureRows,
     }
 }

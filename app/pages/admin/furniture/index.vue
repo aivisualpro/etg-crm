@@ -160,9 +160,10 @@ onUnmounted(() => {
 // ─── Global prefetched store (instant - no loading) ────────
 const {
   level1Map, level2Map, level3Map, subCatMap, assetDescMap,
-  furnitureUsersMap, init,
+  furnitureUsersMap, init, ensureFurnitureRows,
 } = useDashboardStore()
 init()
+ensureFurnitureRows() // Pre-warm cache for report page
 
 function resolveSubCat(a66: string | undefined): string {
   if (!a66) return ''
@@ -420,19 +421,13 @@ function openLightbox(src: string) {
 }
 
 function imageUrl(row: any, col: string): string {
-  // Prefer the _url column (set by image sync — trusted)
+  // Only use the _url column (set by image sync with valid GCS paths)
+  // Raw columns (A69/A71/A72) contain Google Drive paths — NOT GCS paths
   const gcsPath = row[col + '_url']
   if (gcsPath && typeof gcsPath === 'string' && gcsPath.trim()) {
-    return gcsPath.startsWith('http') ? gcsPath : `/api/gcs/${gcsPath}`
-  }
-  // Fallback to raw column — only if it looks like an actual image path
-  const rawPath = row[col]
-  if (rawPath && typeof rawPath === 'string' && rawPath.includes('/')) {
-    // Must have an image extension to be a valid image path
-    const lc = rawPath.toLowerCase()
-    if (/\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(lc) || lc.includes('furniture_images')) {
-      return `/api/gcs/${rawPath}`
-    }
+    if (gcsPath.startsWith('http')) return gcsPath
+    // Validate: must look like a proper GCS path (contains /)
+    if (gcsPath.includes('/')) return `/api/gcs/${gcsPath}`
   }
   return ''
 }
