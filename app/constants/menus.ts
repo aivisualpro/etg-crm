@@ -58,15 +58,4 @@ export const navMenu: NavMenu[] = [
   },
 ]
 
-export const navMenuBottom: NavMenuItems = [
-  {
-    title: 'Support',
-    icon: 'i-lucide-life-buoy',
-    link: '/support/tickets',
-  },
-  {
-    title: 'Remote Assistance',
-    icon: 'i-lucide-circle-help',
-    link: '/remote-assistance',
-  },
-]
+export const navMenuBottom: NavMenuItems = []
