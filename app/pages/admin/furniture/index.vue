@@ -190,6 +190,30 @@ function resolveSubCat(a66: string | undefined): string {
   return appLang.value === 'ar' ? (entry.arabic || entry.eng || a66) : (entry.eng || a66)
 }
 
+// Asset Descriptions lookup: A67 → eng/arabic
+const assetDescMap = ref<Record<string, { eng: string, arabic: string }>>({})
+async function fetchAssetDescMap() {
+  try {
+    const data = await $fetch<{ success: boolean, descriptions: any[] }>('/api/bigquery/asset-descriptions')
+    if (data.success && data.descriptions) {
+      const m: Record<string, { eng: string, arabic: string }> = {}
+      for (const r of data.descriptions) {
+        if (r.A67) m[r.A67] = { eng: r.eng || r.A67, arabic: r.arabic || r.A67 }
+      }
+      assetDescMap.value = m
+    }
+  }
+  catch { /* ignore */ }
+}
+fetchAssetDescMap()
+
+function resolveAssetDesc(a67: string | undefined): string {
+  if (!a67) return ''
+  const entry = assetDescMap.value[a67]
+  if (!entry) return a67
+  return appLang.value === 'ar' ? (entry.arabic || entry.eng || a67) : (entry.eng || a67)
+}
+
 function resolveLevel1Logo(a7: string | undefined): string {
   if (!a7) return ''
   const entry = level1Map.value[a7]
@@ -365,7 +389,7 @@ const columnDefs = [
   { key: 'A8', fallback: 'Level 2', width: '150px' },
   { key: 'A9', fallback: 'Level 3', width: '140px' },
   { key: 'A66', fallback: 'Subcategory', width: '140px' },
-  { key: 'A67', fallback: 'A67', width: '100px' },
+  { key: 'A67', fallback: 'Asset Description', width: '160px' },
   { key: 'A222', fallback: 'Description', width: '180px' },
   { key: 'A68', fallback: 'Condition', width: '120px' },
   { key: 'A71', fallback: 'Photo 2', width: '60px', isImage: true },
@@ -829,6 +853,9 @@ function statusLabel(status: string) {
               <template v-else-if="col.key === 'A66'">
                 <span class="text-sm whitespace-nowrap" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveSubCat(row.A66) || '—' }}</span>
               </template>
+              <template v-else-if="col.key === 'A67'">
+                <span class="text-sm whitespace-nowrap" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveAssetDesc(row.A67) || '—' }}</span>
+              </template>
               <template v-else-if="col.key === 'A222'">
                 <span dir="rtl" class="text-sm">{{ row.A222 || '—' }}</span>
               </template>
@@ -842,8 +869,9 @@ function statusLabel(status: string) {
                     'bg-red-500/10 text-red-600 dark:text-red-400': row.A68 === 'Poor' || row.A68 === '1',
                     'bg-muted text-muted-foreground': !['Good', 'Fair', 'Poor', '1', '2', '3'].includes(row.A68)
                   }"
+                  :dir="appLang === 'ar' ? 'rtl' : 'ltr'"
                 >
-                  {{ row.A68 }}
+                  {{ resolveLang(row.A68) }}
                 </span>
                 <span v-else class="text-sm text-muted-foreground">—</span>
               </template>

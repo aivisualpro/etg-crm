@@ -55,9 +55,9 @@ export const navMenu: NavMenu[] = [
     headingKey: 'nav.reports',
     items: [
       {
-        title: 'General',
-        icon: 'i-lucide-clipboard-list',
-        link: '/reports/general',
+        title: 'Furniture',
+        icon: 'i-lucide-armchair',
+        link: '/reports/furniture',
       },
       {
         title: 'PM Weekly',
