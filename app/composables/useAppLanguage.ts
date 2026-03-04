@@ -33,11 +33,19 @@ export function useAppLanguage() {
      */
     function setLang(newLang: AppLang) {
         _lang.value = newLang
-        // Persist
         if (import.meta.client) {
             localStorage.setItem('etg_lang', newLang)
-            document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr'
+            const newDir = newLang === 'ar' ? 'rtl' : 'ltr'
+            document.documentElement.dir = newDir
             document.documentElement.lang = newLang
+
+            // Sync direction + sidebar side into the cookie-backed appSettings
+            // so SidebarProvider, Sidebar, SidebarInset etc. all flip correctly
+            const { updateAppSettings } = useAppSettings()
+            updateAppSettings({
+                direction: newDir,
+                sidebar: { side: newLang === 'ar' ? 'right' : 'left' },
+            })
         }
     }
 
@@ -100,8 +108,16 @@ export function useAppLanguage() {
             const saved = localStorage.getItem('etg_lang') as AppLang | null
             if (saved === 'ar' || saved === 'en') {
                 _lang.value = saved
-                document.documentElement.dir = saved === 'ar' ? 'rtl' : 'ltr'
+                const dir = saved === 'ar' ? 'rtl' : 'ltr'
+                document.documentElement.dir = dir
                 document.documentElement.lang = saved
+
+                // Sync into cookie-backed appSettings for sidebar components
+                const { updateAppSettings } = useAppSettings()
+                updateAppSettings({
+                    direction: dir,
+                    sidebar: { side: saved === 'ar' ? 'right' : 'left' },
+                })
             }
         }
         loadLanguageMap()

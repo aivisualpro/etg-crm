@@ -19,6 +19,8 @@ const props = withDefaults(defineProps<SidebarMenuButtonProps & {
 })
 
 const { isMobile, state } = useSidebar()
+const { direction } = useAppSettings()
+const tooltipSide = computed(() => direction.value === 'rtl' ? 'left' : 'right')
 
 const delegatedProps = reactiveOmit(props, 'tooltip')
 </script>
@@ -35,7 +37,7 @@ const delegatedProps = reactiveOmit(props, 'tooltip')
       </SidebarMenuButtonChild>
     </TooltipTrigger>
     <TooltipContent
-      side="right"
+      :side="tooltipSide"
       align="center"
       :hidden="state !== 'collapsed' || isMobile"
     >

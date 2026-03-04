@@ -1,0 +1,1 @@
+import{d as o,b as r,e as t,n,h as c,K as l,v as p}from"./Cq26USZo.js";const f=o({__name:"CardFooter",props:{class:{}},setup(e){const s=e;return(a,d)=>(t(),r("div",{"data-slot":"card-footer",class:n(c(l)("flex items-center px-6 [.border-t]:pt-6",s.class))},[p(a.$slots,"default")],2))}});export{f as _};

@@ -11,6 +11,7 @@ defineProps<{
 }>()
 
 const { isMobile, setOpenMobile } = useSidebar()
+const { direction } = useAppSettings()
 const { logout } = useAuth()
 
 function handleLogout() {
@@ -43,28 +44,28 @@ const showModalTheme = ref(false)
                 {{ user.name.split(' ').map((n) => n[0]).join('') }}
               </AvatarFallback>
             </Avatar>
-            <div class="grid flex-1 text-left text-sm leading-tight">
+            <div class="grid flex-1 text-start text-sm leading-tight">
               <span class="truncate font-semibold">{{ user.name }}</span>
               <span v-if="user.role" class="truncate text-[10px] text-muted-foreground">{{ user.role }}</span>
               <span v-else class="truncate text-[10px] text-muted-foreground">{{ user.email }}</span>
             </div>
-            <Icon name="i-lucide-chevrons-up-down" class="ml-auto size-4" />
+            <Icon name="i-lucide-chevrons-up-down" class="ms-auto size-4" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           class="min-w-56 w-[--radix-dropdown-menu-trigger-width] rounded-lg"
-          :side="isMobile ? 'bottom' : 'right'"
+          :side="isMobile ? 'bottom' : (direction === 'rtl' ? 'left' : 'right')"
           align="end"
         >
           <DropdownMenuLabel class="p-0 font-normal">
-            <div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+            <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
               <Avatar class="h-8 w-8 rounded-lg">
                 <AvatarImage :src="user.avatar" :alt="user.name" />
                 <AvatarFallback class="rounded-lg">
                   {{ user.name.split(' ').map((n) => n[0]).join('') }}
                 </AvatarFallback>
               </Avatar>
-              <div class="grid flex-1 text-left text-sm leading-tight">
+              <div class="grid flex-1 text-start text-sm leading-tight">
                 <span class="truncate font-semibold">{{ user.name }}</span>
                 <span class="truncate text-xs text-muted-foreground">{{ user.email }}</span>
                 <span v-if="user.role" class="truncate text-[10px] text-muted-foreground/70">{{ user.role }}</span>

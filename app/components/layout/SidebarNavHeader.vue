@@ -15,7 +15,7 @@ defineProps<{
               <img src="/logo-192.png" alt="ETG CRM" class="size-8 object-cover group-hover/brand:scale-105 transition-transform duration-300" />
             </div>
           </div>
-          <div class="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+          <div class="grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden">
             <div class="flex items-center gap-1.5">
               <span class="truncate font-bold tracking-tight">ETG CRM</span>
               <span class="text-[8px] font-semibold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full leading-none">v1.0</span>

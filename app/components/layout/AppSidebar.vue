@@ -91,7 +91,7 @@ function setAppLang(l: 'en' | 'ar') {
       </SidebarGroup>
       <SidebarGroup class="mt-auto">
         <!-- Language toggle -->
-        <div class="px-3 py-2">
+        <div class="px-3 py-2" dir="ltr">
           <div class="relative flex rounded-lg bg-muted/60 p-1 ring-1 ring-border/40">
             <!-- Sliding indicator -->
             <div
