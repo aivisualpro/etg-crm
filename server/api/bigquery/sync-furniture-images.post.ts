@@ -17,7 +17,8 @@
  */
 const GCS_BUCKET = 'etg-storage'
 const IMAGE_COLUMNS = ['A69', 'A71', 'A72']
-const MAX_DURATION_MS = 50_000 // Stop at 50s to leave room for cleanup (Vercel 60s limit)
+const MAX_DURATION_MS = 55_000 // Stop at 55s to leave room for cleanup (Vercel 60s limit)
+const INDEX_MAX_MS = 45_000   // Max time to spend indexing Drive files
 const CONCURRENCY = 5          // Download/upload this many images in parallel
 
 export default defineEventHandler(async (event) => {
@@ -95,26 +96,66 @@ export default defineEventHandler(async (event) => {
             throw createError({ statusCode: 404, statusMessage: 'Furniture_Images folder not found in Google Drive' })
         }
 
-        // Index files in Furniture_Images (paginated)
+        // Index ONLY the files we actually need (by looking up filenames from rows)
+        // Instead of scanning 25k+ files, look up specific files by name
         const driveFileMap = new Map<string, { id: string, name: string, mimeType: string }>()
-        let pageToken: string | undefined
-        do {
-            if (Date.now() - startTime > MAX_DURATION_MS) break // Time guard
-            const filesRes = await drive.files.list({
-                q: `'${imagesFolderId}' in parents`,
-                pageSize: 1000,
-                fields: 'nextPageToken, files(id, name, mimeType)',
-                pageToken,
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true,
-            })
-            for (const f of (filesRes.data.files || []) as Array<{ id: string, name: string, mimeType: string }>) {
-                driveFileMap.set(f.name, f)
-            }
-            pageToken = filesRes.data.nextPageToken || undefined
-        } while (pageToken)
 
-        console.log(`  📂 ${driveFileMap.size} files indexed from Furniture_Images`)
+        // Collect all filenames we need to find
+        const neededFiles = new Set<string>()
+        for (const row of rows as Array<Record<string, string>>) {
+            for (const col of IMAGE_COLUMNS) {
+                const urlCol = col + '_url'
+                if (row[urlCol] && row[urlCol].trim()) continue
+                const imgPath = row[col]
+                if (!imgPath || (!imgPath.includes('/') && !imgPath.includes('.'))) continue
+                const imgFileName = imgPath.includes('/') ? (imgPath.split('/').pop() || '') : imgPath
+                if (imgFileName) neededFiles.add(imgFileName)
+            }
+        }
+
+        if (neededFiles.size > 0) {
+            // If we need few files, search by name directly (much faster than indexing all)
+            if (neededFiles.size <= 50) {
+                const fileNames = Array.from(neededFiles)
+                // Search in batches of 10 (Drive API) 
+                for (let i = 0; i < fileNames.length; i += 10) {
+                    if (Date.now() - startTime > INDEX_MAX_MS) break
+                    const batch = fileNames.slice(i, i + 10)
+                    const nameQuery = batch.map(n => `name = '${n.replace(/'/g, "\\'")}'`).join(' or ')
+                    const searchRes = await drive.files.list({
+                        q: `'${imagesFolderId}' in parents and (${nameQuery})`,
+                        pageSize: 100,
+                        fields: 'files(id, name, mimeType)',
+                        supportsAllDrives: true,
+                        includeItemsFromAllDrives: true,
+                    })
+                    for (const f of (searchRes.data.files || []) as Array<{ id: string, name: string, mimeType: string }>) {
+                        driveFileMap.set(f.name, f)
+                    }
+                }
+            } else {
+                // Too many files needed — do a full scan like before but with index time limit
+                let pageToken: string | undefined
+                do {
+                    if (Date.now() - startTime > INDEX_MAX_MS) break
+                    const filesRes = await drive.files.list({
+                        q: `'${imagesFolderId}' in parents`,
+                        pageSize: 1000,
+                        fields: 'nextPageToken, files(id, name, mimeType)',
+                        pageToken,
+                        supportsAllDrives: true,
+                        includeItemsFromAllDrives: true,
+                    })
+                    for (const f of (filesRes.data.files || []) as Array<{ id: string, name: string, mimeType: string }>) {
+                        driveFileMap.set(f.name, f)
+                    }
+                    pageToken = filesRes.data.nextPageToken || undefined
+                } while (pageToken)
+            }
+        }
+
+        const indexTime = Math.round((Date.now() - startTime) / 1000)
+        console.log(`  📂 ${driveFileMap.size} files indexed from Furniture_Images (needed: ${neededFiles.size}, took ${indexTime}s)`)
 
         // Step 3: Build list of images to process
         interface ImageJob {

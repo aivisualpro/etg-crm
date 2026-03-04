@@ -446,6 +446,10 @@ function toggleRoom(roomKey: string) {
 const galleryGroups = computed<GalleryFloor[]>(() => {
   const floorMap: Record<string, Record<string, any[]>> = {}
   for (const row of sortedRows.value) {
+    // Only include items that have at least one cloud bucket image
+    const hasImage = (row.A69_url && row.A69_url.trim()) || (row.A71_url && row.A71_url.trim()) || (row.A72_url && row.A72_url.trim())
+    if (!hasImage) continue
+
     const floor = row.A8 || '__unknown__'
     const room = row.A9 || '__unknown__'
     if (!floorMap[floor]) floorMap[floor] = {}
@@ -618,9 +622,24 @@ function statusLabel(status: string) {
         </div>
 
         <!-- Total records -->
-        <p v-if="!loading && total > 0" class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
+        <p v-if="!loading && total > 0 && !syncState.active" class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
           {{ total.toLocaleString() }} records
         </p>
+
+        <!-- Sync progress (in header) -->
+        <div v-if="syncState.active" class="flex items-center gap-2 min-w-0 shrink-0">
+          <div class="flex items-center gap-1.5">
+            <Icon name="i-lucide-loader-2" class="size-3 animate-spin text-blue-500 shrink-0" />
+            <span class="text-[11px] text-muted-foreground whitespace-nowrap max-w-[200px] truncate">{{ syncState.currentLabel }}</span>
+          </div>
+          <div class="h-1.5 w-20 sm:w-28 rounded-full bg-muted overflow-hidden shrink-0">
+            <div
+              class="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500 ease-out"
+              :style="{ width: `${syncState.percent}%` }"
+            />
+          </div>
+          <span class="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">{{ syncState.percent }}%</span>
+        </div>
 
         <!-- Health Check Button -->
         <Button
@@ -884,23 +903,6 @@ function statusLabel(status: string) {
           {{ dateCounts[tab.key]?.toLocaleString() }}
         </span>
       </button>
-
-      <!-- Sync progress bar -->
-      <div v-if="syncState.active" class="ml-auto flex items-center gap-2.5 min-w-0 shrink-0">
-        <div class="flex items-center gap-1.5">
-          <Icon name="i-lucide-loader-2" class="size-3 animate-spin text-blue-500 shrink-0" />
-          <span class="text-[10px] text-muted-foreground capitalize whitespace-nowrap">{{ syncState.type }}</span>
-        </div>
-        <div class="h-1.5 w-24 sm:w-40 rounded-full bg-muted overflow-hidden shrink-0">
-          <div
-            class="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500 ease-out"
-            :style="{ width: `${syncState.percent}%` }"
-          />
-        </div>
-        <span class="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
-          {{ syncState.percent }}%
-        </span>
-      </div>
     </div>
 
     <!-- Loading -->

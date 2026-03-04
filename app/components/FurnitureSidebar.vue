@@ -84,7 +84,7 @@ function toggleA8(key: string) {
       <NuxtLink
         to="/admin/furniture"
         class="flex items-center gap-2 px-3 py-1.5 rounded-md mx-1.5 transition-colors"
-        :class="isActive('/admin/furniture') ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'"
+        :class="isActive('/admin/furniture') ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'"
       >
         <Icon name="i-lucide-layers" class="size-3.5 shrink-0" />
         <span class="truncate">All</span>
@@ -114,7 +114,7 @@ function toggleA8(key: string) {
           v-if="openA7[a7]"
           :to="`/admin/furniture/${a7}`"
           class="flex items-center gap-1.5 pl-8 pr-3 py-1 rounded-md text-xs transition-colors"
-          :class="isActive(`/admin/furniture/${a7}`) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+          :class="isActive(`/admin/furniture/${a7}`) ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
         >
           <Icon name="i-lucide-list" class="size-3 shrink-0" />
           <span>All</span>
@@ -142,7 +142,7 @@ function toggleA8(key: string) {
               v-if="openA8[`${a7}/${a8Key}`]"
               :to="`/admin/furniture/${a7}/${a8Key}`"
               class="flex items-center gap-1.5 pl-12 pr-3 py-1 rounded-md text-xs transition-colors"
-              :class="isActive(`/admin/furniture/${a7}/${a8Key}`) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+              :class="isActive(`/admin/furniture/${a7}/${a8Key}`) ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
             >
               <Icon name="i-lucide-list" class="size-3 shrink-0" />
               <span>All</span>
@@ -155,7 +155,7 @@ function toggleA8(key: string) {
                 :key="a9Key"
                 :to="`/admin/furniture/${a7}/${a8Key}/${a9Key}`"
                 class="flex items-center gap-1.5 pl-14 pr-3 py-1 rounded-md text-xs transition-colors"
-                :class="isActive(`/admin/furniture/${a7}/${a8Key}/${a9Key}`) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                :class="isActive(`/admin/furniture/${a7}/${a8Key}/${a9Key}`) ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
               >
                 <span class="truncate">{{ getL3(String(a9Key)) }}</span>
                 <span class="ml-auto text-[10px] tabular-nums opacity-50">{{ a9Count.toLocaleString() }}</span>

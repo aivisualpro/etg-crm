@@ -298,10 +298,24 @@ export function useSyncProgress() {
             let offset = 0
             const batchSize = 20
             let remaining = 1
+            let batchCount = 0
+
+            // Elapsed time ticker — updates the label every second while waiting
+            const tickInterval = setInterval(() => {
+                if (_syncState.active && _syncState.type === 'Image Sync') {
+                    const elapsed = Math.round((Date.now() - _syncState.startedAt) / 1000)
+                    if (totalCopied === 0) {
+                        _syncState.currentLabel = `Indexing & processing images... (${elapsed}s)`
+                    }
+                }
+            }, 1000)
 
             while (remaining > 0) {
                 const params: Record<string, string | number> = { batch: batchSize, offset }
                 if (options?.partition) params.partition = options.partition
+
+                batchCount++
+                const batchStart = Date.now()
 
                 const result = await $fetch<{
                     success: boolean
@@ -323,7 +337,7 @@ export function useSyncProgress() {
                     : 100
                 _syncState.percent = percentDone
                 _syncState.rowsFetched = totalCopied
-                _syncState.currentLabel = `${totalCopied} images synced... (${remaining} rows remaining)`
+                _syncState.currentLabel = `${totalCopied.toLocaleString()}/${result.totalNeedingImages.toLocaleString()}/${remaining.toLocaleString()} (${percentDone}%)`
 
                 if (result.nextOffset !== null) {
                     offset = result.nextOffset
@@ -333,6 +347,7 @@ export function useSyncProgress() {
                 }
             }
 
+            clearInterval(tickInterval)
             completeStep(0, totalCopied)
             finishSync()
             return { totalCopied }
