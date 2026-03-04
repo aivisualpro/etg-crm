@@ -54,6 +54,11 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-armchair',
         link: '/reports/furniture',
       },
+      {
+        title: 'Employee Performance',
+        icon: 'i-lucide-trophy',
+        link: '/reports/employee-performance',
+      },
     ],
   },
 ]
