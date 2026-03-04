@@ -46,8 +46,8 @@ export default defineEventHandler(async (event) => {
         const project = bqConfig.projectId || 'flutter-5e2fd'
 
         // First check if the email exists at all
-        const checkSql = `SELECT Email, Status FROM \`${project}.${dataset}.etgUsers\` WHERE LOWER(Email) = LOWER(@email) LIMIT 1`
-        const existingRows = await queryBigQuery<{ Email: string, Status: boolean | string }>(checkSql, { email })
+        const checkSql = `SELECT email, Status FROM \`${project}.${dataset}.etgusers\` WHERE LOWER(email) = LOWER(@email) LIMIT 1`
+        const existingRows = await queryBigQuery<{ email: string, Status: boolean | string }>(checkSql, { email })
 
         if (existingRows.length === 0) {
           // Email NOT in the system at all
