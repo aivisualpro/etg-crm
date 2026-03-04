@@ -4,30 +4,17 @@ import { toast } from 'vue-sonner'
 const { setHeader } = usePageHeader()
 setHeader({ title: 'Language', icon: 'i-lucide-languages', description: 'etgLanguage reference table' })
 
-// State
-const loading = ref(true)
+// ─── Global prefetched store (instant) ──────────────────────
+const store = useDashboardStore()
+store.init()
+
+const loading = computed(() => !store.ready.value)
 const search = ref('')
-const rows = ref<any[]>([])
+const rows = computed(() => [...store.language.value])
 const editingRow = ref<any>(null)
 const editDialog = ref(false)
 
-// Fetch etgLanguage data
-async function fetchLanguage() {
-  loading.value = true
-  try {
-    const data = await $fetch<{ success: boolean, language: any[] }>('/api/bigquery/language')
-    if (data.success) {
-      rows.value = data.language || []
-    }
-  }
-  catch (e: any) {
-    toast.error('Failed to load language data')
-  }
-  finally {
-    loading.value = false
-  }
-}
-fetchLanguage()
+async function fetchLanguage() { await store.refresh() }
 
 // Search filter
 const filteredRows = computed(() => {

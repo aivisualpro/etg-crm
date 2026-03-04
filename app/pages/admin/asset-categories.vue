@@ -11,33 +11,14 @@ onMounted(() => { isMounted.value = true })
 const activeTab = ref('categories')
 const search = ref('')
 const syncing = ref(false)
-const loading = ref(true)
 
-const categories = ref<any[]>([])
-const subCategories = ref<any[]>([])
+// ─── Global prefetched store (instant) ──────────────────────
+const store = useDashboardStore()
+store.init()
 
-// ─── Fetch data ─────────────────────────────────────────────
-async function fetchData() {
-  loading.value = true
-  try {
-    const data = await $fetch<{
-      success: boolean
-      categories: any[]
-      subCategories: any[]
-    }>('/api/bigquery/asset-categories')
-    if (data.success) {
-      categories.value = data.categories
-      subCategories.value = data.subCategories
-    }
-  }
-  catch (e: any) {
-    toast.error('Failed to load asset categories')
-  }
-  finally {
-    loading.value = false
-  }
-}
-fetchData()
+const loading = computed(() => !store.ready.value)
+const categories = computed(() => [...store.categories.value])
+const subCategories = computed(() => [...store.subCategories.value])
 
 // ─── Sync from AppSheet ─────────────────────────────────────
 async function syncData() {
@@ -45,7 +26,7 @@ async function syncData() {
   try {
     const data = await $fetch<{ success: boolean, message: string }>('/api/bigquery/sync-levels', { method: 'POST' })
     toast.success(data.message || 'Synced successfully')
-    await fetchData()
+    await store.refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Sync failed')
@@ -203,8 +184,8 @@ function cellValue(row: any, key: string): string {
         <Icon :name="tab.icon" class="size-3.5" />
         {{ tab.label }}
         <span
-          class="ml-0.5 text-[10px] tabular-nums"
-          :class="activeTab === tab.key ? 'opacity-80' : 'opacity-50'"
+          class="ml-0.5 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full"
+          :class="activeTab === tab.key ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-foreground/60'"
         >
           {{ tab.count }}
         </span>

@@ -11,36 +11,21 @@ onMounted(() => { isMounted.value = true })
 const activeTab = ref('level1')
 const search = ref('')
 const syncing = ref(false)
-const loading = ref(true)
-
 const level1 = ref<any[]>([])
 const level2 = ref<any[]>([])
 const level3 = ref<any[]>([])
 
-// ─── Fetch data ─────────────────────────────────────────────
-async function fetchLevels() {
-  loading.value = true
-  try {
-    const data = await $fetch<{
-      success: boolean
-      level1: any[]
-      level2: any[]
-      level3: any[]
-    }>('/api/bigquery/levels')
-    if (data.success) {
-      level1.value = data.level1
-      level2.value = data.level2
-      level3.value = data.level3
-    }
-  }
-  catch (e: any) {
-    toast.error('Failed to load entities')
-  }
-  finally {
-    loading.value = false
-  }
-}
-fetchLevels()
+// ─── Global prefetched store (instant) ──────────────────────
+const store = useDashboardStore()
+store.init()
+
+// Populate from store immediately
+const loading = computed(() => !store.ready.value)
+watchEffect(() => {
+  level1.value = [...store.level1List.value]
+  level2.value = [...store.level2List.value]
+  level3.value = [...store.level3List.value]
+})
 
 // ─── Sync from AppSheet ─────────────────────────────────────
 async function syncLevels() {
@@ -48,7 +33,7 @@ async function syncLevels() {
   try {
     const data = await $fetch<{ success: boolean, message: string }>('/api/bigquery/sync-levels', { method: 'POST' })
     toast.success(data.message || 'Synced successfully')
-    await fetchLevels()
+    await store.refresh()
   }
   catch (e: any) {
     toast.error(e.data?.statusMessage || 'Sync failed')
@@ -229,8 +214,8 @@ function logoUrl(row: any): string {
         <Icon :name="tab.icon" class="size-3.5" />
         {{ tab.label }}
         <span
-          class="ml-0.5 text-[10px] tabular-nums"
-          :class="activeTab === tab.key ? 'opacity-80' : 'opacity-50'"
+          class="ml-0.5 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full"
+          :class="activeTab === tab.key ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-foreground/60'"
         >
           {{ tab.count }}
         </span>

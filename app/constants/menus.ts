@@ -29,14 +29,9 @@ export const navMenu: NavMenu[] = [
         link: '/admin/users',
       },
       {
-        title: 'Asset Categories',
+        title: 'Categories',
         icon: 'i-lucide-tags',
-        link: '/admin/asset-categories',
-      },
-      {
-        title: 'Asset Descriptions',
-        icon: 'i-lucide-list',
-        link: '/admin/asset-descriptions',
+        link: '/admin/categories',
       },
       {
         title: 'Furniture',

@@ -13,6 +13,23 @@ const _customers = ref<any[]>([])
 const _permits = ref<any[]>([])
 const _roles = ref<any[]>([])
 
+// Furniture lookup data
+const _level1Map = ref<Record<string, { logo: string, eng: string, arabic: string }>>({})
+const _level2Map = ref<Record<string, { eng: string, arabic: string }>>({})
+const _level3Map = ref<Record<string, { eng: string, arabic: string }>>({})
+const _subCatMap = ref<Record<string, { eng: string, arabic: string }>>({})
+const _assetDescMap = ref<Record<string, { eng: string, arabic: string }>>({})
+const _furnitureUsersMap = ref<Record<string, string>>({})
+
+// Raw lists for admin pages
+const _level1List = ref<any[]>([])
+const _level2List = ref<any[]>([])
+const _level3List = ref<any[]>([])
+const _categories = ref<any[]>([])
+const _subCategories = ref<any[]>([])
+const _assetDescriptions = ref<any[]>([])
+const _language = ref<any[]>([])
+
 const _userNameMap = ref<Record<string, string>>({})
 const _customerNameMap = ref<Record<string, string>>({})
 const _projectMap = ref<Record<string, any>>({})
@@ -60,18 +77,73 @@ async function _fetchAll() {
     if (_fetching.value) return
     _fetching.value = true
     try {
-        const [projData, userData, custData, permitsData, rolesData] = await Promise.all([
+        const [projData, userData, custData, permitsData, rolesData, levelsData, catData, descData, langData] = await Promise.all([
             $fetch<{ success: boolean, projects: any[] }>('/api/bigquery/projects').catch(() => ({ success: false, projects: [] })),
             $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users').catch(() => ({ success: false, users: [] })),
             $fetch<{ success: boolean, customers: any[] }>('/api/bigquery/customers').catch(() => ({ success: false, customers: [] })),
             $fetch<{ success: boolean, permits: any[] }>('/api/bigquery/permits').catch(() => ({ success: false, permits: [] })),
             $fetch<{ success: boolean, roles: any[] }>('/api/bigquery/roles').catch(() => ({ success: false, roles: [] })),
+            $fetch<{ success: boolean, level1: any[], level2: any[], level3: any[] }>('/api/bigquery/levels').catch(() => ({ success: false, level1: [], level2: [], level3: [] })),
+            $fetch<{ success: boolean, categories: any[], subCategories: any[] }>('/api/bigquery/asset-categories').catch(() => ({ success: false, categories: [], subCategories: [] })),
+            $fetch<{ success: boolean, descriptions: any[] }>('/api/bigquery/asset-descriptions').catch(() => ({ success: false, descriptions: [] })),
+            $fetch<{ success: boolean, language: any[] }>('/api/bigquery/language').catch(() => ({ success: false, language: [] })),
         ])
         if (projData.success) _projects.value = projData.projects
         if (userData.success) _users.value = userData.users
         if (custData.success) _customers.value = custData.customers
         if (permitsData.success) _permits.value = permitsData.permits
         if (rolesData.success) _roles.value = rolesData.roles
+
+        // Build furniture lookup maps + store raw lists
+        if (levelsData.success) {
+            _level1List.value = levelsData.level1 || []
+            _level2List.value = levelsData.level2 || []
+            _level3List.value = levelsData.level3 || []
+            const m1: Record<string, { logo: string, eng: string, arabic: string }> = {}
+            for (const r of levelsData.level1 || []) {
+                if (r.A7) m1[r.A7] = { logo: r.image_url || r.logo || '', eng: r.eng || r.A7, arabic: r.arabic || r.A7 }
+            }
+            _level1Map.value = m1
+            const m2: Record<string, { eng: string, arabic: string }> = {}
+            for (const r of levelsData.level2 || []) {
+                if (r.A8) m2[r.A8] = { eng: r.eng || r.A8, arabic: r.arabic || r.A8 }
+            }
+            _level2Map.value = m2
+            const m3: Record<string, { eng: string, arabic: string }> = {}
+            for (const r of levelsData.level3 || []) {
+                if (r.A9) m3[r.A9] = { eng: r.eng || r.A9, arabic: r.arabic || r.A9 }
+            }
+            _level3Map.value = m3
+        }
+        if (catData.success) {
+            _categories.value = (catData as any).categories || []
+            _subCategories.value = catData.subCategories || []
+            const m: Record<string, { eng: string, arabic: string }> = {}
+            for (const r of catData.subCategories || []) {
+                if (r.A66) m[r.A66] = { eng: r.eng || r.A66, arabic: r.arabic || r.A66 }
+            }
+            _subCatMap.value = m
+        }
+        if (descData.success) {
+            _assetDescriptions.value = descData.descriptions || []
+            const m: Record<string, { eng: string, arabic: string }> = {}
+            for (const r of descData.descriptions || []) {
+                if (r.A67) m[r.A67] = { eng: r.eng || r.A67, arabic: r.arabic || r.A67 }
+            }
+            _assetDescMap.value = m
+        }
+        // Users map for furniture (A201 → A2)
+        if (userData.success) {
+            const m: Record<string, string> = {}
+            for (const u of _users.value) {
+                if (u.A201) m[u.A201] = u.A2 || u.A201
+            }
+            _furnitureUsersMap.value = m
+        }
+        // Language data
+        if (langData.success) {
+            _language.value = (langData as any).language || []
+        }
 
         // ─── Normalize casing for consistent display ────────────
         const tc = (s: string) => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -142,6 +214,23 @@ export function useDashboardStore() {
         userNameMap: readonly(_userNameMap),
         customerNameMap: readonly(_customerNameMap),
         projectMap: readonly(_projectMap),
+
+        // Furniture lookup maps
+        level1Map: readonly(_level1Map),
+        level2Map: readonly(_level2Map),
+        level3Map: readonly(_level3Map),
+        subCatMap: readonly(_subCatMap),
+        assetDescMap: readonly(_assetDescMap),
+        furnitureUsersMap: readonly(_furnitureUsersMap),
+
+        // Raw lists for admin pages
+        level1List: readonly(_level1List),
+        level2List: readonly(_level2List),
+        level3List: readonly(_level3List),
+        categories: readonly(_categories),
+        subCategories: readonly(_subCategories),
+        assetDescriptions: readonly(_assetDescriptions),
+        language: readonly(_language),
 
         // State
         ready: readonly(_ready),

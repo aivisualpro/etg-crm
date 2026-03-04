@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
         const dateFilter = (query.dateFilter as string || '').trim()
 
         if (search) {
-            conditions.push('(LOWER(ID) LIKE @search OR LOWER(A70) LIKE @search OR LOWER(A222) LIKE @search OR LOWER(A68) LIKE @search)')
+            conditions.push('(LOWER(ID) LIKE @search OR LOWER(A70) LIKE @search OR LOWER(A75) LIKE @search OR LOWER(A222) LIKE @search OR LOWER(A68) LIKE @search)')
             params.search = `%${search.toLowerCase()}%`
         }
 

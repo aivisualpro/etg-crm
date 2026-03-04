@@ -10,19 +10,18 @@ onMounted(() => { isMounted.value = true })
 
 const { resolve: resolveLang, lang: appLang } = useAppLanguage()
 
+// ─── Global prefetched store (instant lookups) ──────────────
+const {
+  level1Map, level2Map, level3Map, subCatMap, assetDescMap,
+  furnitureUsersMap: usersMap, init,
+} = useDashboardStore()
+init()
+
 // ─── Data ──────────────────────────────────────────────────
 const loading = ref(true)
 const rows = ref<any[]>([])
 const searchQuery = ref('')
 const sidebarCollapsed = ref(false)
-
-// Lookup maps
-const level1Map = ref<Record<string, { eng: string, arabic: string, logo: string }>>({})
-const level2Map = ref<Record<string, { eng: string, arabic: string }>>({})
-const level3Map = ref<Record<string, { eng: string, arabic: string }>>({})
-const subCatMap = ref<Record<string, { eng: string, arabic: string }>>({})
-const assetDescMap = ref<Record<string, { eng: string, arabic: string }>>({})
-const usersMap = ref<Record<string, string>>({})
 
 // Filter selections
 const selLevel1 = ref<string[]>([])
@@ -37,19 +36,12 @@ const dateTo = ref('')
 // Per-filter search
 const filterSearch = reactive({ level1: '', level2: '', level3: '', subCat: '', condition: '', user: '' })
 
-// ─── Fetch all data ─────────────────────────────────────────
+// ─── Fetch furniture rows (report needs all rows) ───────────
 async function fetchAll() {
   loading.value = true
   try {
-    const [furnitureData, levelsData, catData, descData, usersData] = await Promise.all([
-      $fetch<{ success: boolean, rows: any[], total: number }>('/api/bigquery/furniture', { params: { limit: 500, page: 1 } }),
-      $fetch<{ success: boolean, level1: any[], level2: any[], level3: any[] }>('/api/bigquery/levels'),
-      $fetch<{ success: boolean, subCategories: any[] }>('/api/bigquery/asset-categories'),
-      $fetch<{ success: boolean, descriptions: any[] }>('/api/bigquery/asset-descriptions'),
-      $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users'),
-    ])
+    const furnitureData = await $fetch<{ success: boolean, rows: any[], total: number }>('/api/bigquery/furniture', { params: { limit: 500, page: 1 } })
 
-    // All furniture rows (paginated API, fetch all)
     rows.value = furnitureData.rows || []
 
     // Also fetch remaining pages if total > 500
@@ -66,26 +58,6 @@ async function fetchAll() {
       for (const pg of pages) {
         rows.value.push(...(pg.rows || []))
       }
-    }
-
-    // Build lookups
-    for (const r of levelsData.level1 || []) {
-      if (r.A7) level1Map.value[r.A7] = { eng: r.eng || r.A7, arabic: r.arabic || r.A7, logo: r.image_url || '' }
-    }
-    for (const r of levelsData.level2 || []) {
-      if (r.A8) level2Map.value[r.A8] = { eng: r.eng || r.A8, arabic: r.arabic || r.A8 }
-    }
-    for (const r of levelsData.level3 || []) {
-      if (r.A9) level3Map.value[r.A9] = { eng: r.eng || r.A9, arabic: r.arabic || r.A9 }
-    }
-    for (const r of catData.subCategories || []) {
-      if (r.A66) subCatMap.value[r.A66] = { eng: r.eng || r.A66, arabic: r.arabic || r.A66 }
-    }
-    for (const r of descData.descriptions || []) {
-      if (r.A67) assetDescMap.value[r.A67] = { eng: r.eng || r.A67, arabic: r.arabic || r.A67 }
-    }
-    for (const u of usersData.users || []) {
-      if (u.A201) usersMap.value[u.A201] = u.A2 || u.A201
     }
   }
   catch (e: any) {
@@ -151,7 +123,17 @@ const level1Opts = computed(() => countSorted(filterExcluding('level1'), 'A7', l
 const level2Opts = computed(() => countSorted(filterExcluding('level2'), 'A8', level2Map.value))
 const level3Opts = computed(() => countSorted(filterExcluding('level3'), 'A9', level3Map.value))
 const subCatOpts = computed(() => countSorted(filterExcluding('subCat'), 'A66', subCatMap.value))
-const conditionOpts = computed(() => countSorted(filterExcluding('condition'), 'A68'))
+const conditionOpts = computed(() => {
+  const recs = filterExcluding('condition')
+  const counts: Record<string, number> = {}
+  for (const r of recs) {
+    const v = r.A68; if (!v) continue
+    counts[v] = (counts[v] || 0) + 1
+  }
+  return Object.entries(counts)
+    .map(([value, count]) => ({ value, label: resolveLang(value), count }))
+    .sort((a, b) => b.count - a.count)
+})
 const userOpts = computed(() => userCountSorted(filterExcluding('user')))
 
 // Toggle filter
@@ -160,9 +142,14 @@ const filterRefs: Record<string, Ref<string[]>> = {
 }
 function toggleFilter(key: string, val: string) {
   const arr = filterRefs[key]
+  if (!arr) return
   const idx = arr.value.indexOf(val)
   if (idx >= 0) arr.value.splice(idx, 1)
   else arr.value.push(val)
+}
+function clearFilter(key: string) {
+  const arr = filterRefs[key]
+  if (arr) arr.value = []
 }
 
 function clearAllFilters() {
@@ -187,7 +174,7 @@ function parseTS(val: string | undefined): Date | null {
   if (!val) return null
   const parts = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/)
   if (!parts) return null
-  return new Date(+parts[3], +parts[1] - 1, +parts[2], +parts[4], +parts[5], +parts[6])
+  return new Date(+parts[3]!, +parts[1]! - 1, +parts[2]!, +parts[4]!, +parts[5]!, +parts[6]!)
 }
 
 const filtered = computed(() => {
@@ -316,7 +303,7 @@ function condColor(c: string) {
                 <button
                   v-if="section.sel.length"
                   class="text-[9px] text-primary hover:underline"
-                  @click="filterRefs[section.key].value = []"
+                  @click="clearFilter(section.key)"
                 >
                   Clear ({{ section.sel.length }})
                 </button>
@@ -457,12 +444,13 @@ function condColor(c: string) {
                   <TableRow v-for="(row, idx) in filtered.slice(0, 100)" :key="row.ID || idx" class="hover:bg-muted/30 transition-colors">
                     <TableCell class="font-mono text-xs font-medium text-muted-foreground">{{ row.A70 || '—' }}</TableCell>
                     <TableCell>
-                      <img
-                        v-if="level1Map[row.A7]?.logo"
-                        :src="level1Map[row.A7].logo.startsWith('http') ? level1Map[row.A7].logo : `/api/gcs/${level1Map[row.A7].logo}`"
-                        class="size-6 rounded-full object-cover ring-1 ring-border/30"
-                        loading="lazy"
-                      >
+                      <template v-if="level1Map[row.A7]?.logo">
+                        <img
+                          :src="level1Map[row.A7]!.logo!.startsWith('http') ? level1Map[row.A7]!.logo : `/api/gcs/${level1Map[row.A7]!.logo}`"
+                          class="size-6 rounded-full object-cover ring-1 ring-border/30"
+                          loading="lazy"
+                        >
+                      </template>
                       <span v-else class="text-xs text-muted-foreground">—</span>
                     </TableCell>
                     <TableCell class="text-[11px]" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveL2(row.A8) }}</TableCell>

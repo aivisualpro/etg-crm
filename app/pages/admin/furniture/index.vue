@@ -112,76 +112,12 @@ async function fetchData() {
 }
 fetchData()
 
-// Users lookup: furniture A2 contains a number matching etgUsers.A201, display etgUsers.A2 (name)
-const usersMap = ref<Record<string, string>>({})
-async function fetchUsersMap() {
-  try {
-    const data = await $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users')
-    if (data.success && data.users) {
-      const map: Record<string, string> = {}
-      for (const u of data.users) {
-        // A201 = phone/ID number (what furniture.A2 stores)
-        // A2 = user name (what we want to display)
-        if (u.A201) map[u.A201] = u.A2 || u.A201
-      }
-      usersMap.value = map
-    }
-  }
-  catch { /* ignore */ }
-}
-fetchUsersMap()
-
-// Levels lookup
-const level1Map = ref<Record<string, { logo: string, eng: string, arabic: string }>>({})
-const level2Map = ref<Record<string, { eng: string, arabic: string }>>({})
-const level3Map = ref<Record<string, { eng: string, arabic: string }>>({})
-
-async function fetchLevelsMap() {
-  try {
-    const data = await $fetch<{ success: boolean, level1: any[], level2: any[], level3: any[] }>('/api/bigquery/levels')
-    if (data.success) {
-      // Level 1: A7 → logo + eng/arabic
-      const m1: Record<string, { logo: string, eng: string, arabic: string }> = {}
-      for (const r of data.level1 || []) {
-        if (r.A7) m1[r.A7] = { logo: r.image_url || r.logo || '', eng: r.eng || r.A7, arabic: r.arabic || r.A7 }
-      }
-      level1Map.value = m1
-
-      // Level 2: A8 → eng/arabic
-      const m2: Record<string, { eng: string, arabic: string }> = {}
-      for (const r of data.level2 || []) {
-        if (r.A8) m2[r.A8] = { eng: r.eng || r.A8, arabic: r.arabic || r.A8 }
-      }
-      level2Map.value = m2
-
-      // Level 3: A9 → eng/arabic
-      const m3: Record<string, { eng: string, arabic: string }> = {}
-      for (const r of data.level3 || []) {
-        if (r.A9) m3[r.A9] = { eng: r.eng || r.A9, arabic: r.arabic || r.A9 }
-      }
-      level3Map.value = m3
-    }
-  }
-  catch { /* ignore */ }
-}
-fetchLevelsMap()
-
-// SubCategories lookup: A66 → eng/arabic
-const subCatMap = ref<Record<string, { eng: string, arabic: string }>>({})
-async function fetchSubCatMap() {
-  try {
-    const data = await $fetch<{ success: boolean, subCategories: any[] }>('/api/bigquery/asset-categories')
-    if (data.success && data.subCategories) {
-      const m: Record<string, { eng: string, arabic: string }> = {}
-      for (const r of data.subCategories) {
-        if (r.A66) m[r.A66] = { eng: r.eng || r.A66, arabic: r.arabic || r.A66 }
-      }
-      subCatMap.value = m
-    }
-  }
-  catch { /* ignore */ }
-}
-fetchSubCatMap()
+// ─── Global prefetched store (instant - no loading) ────────
+const {
+  level1Map, level2Map, level3Map, subCatMap, assetDescMap,
+  furnitureUsersMap, init,
+} = useDashboardStore()
+init()
 
 function resolveSubCat(a66: string | undefined): string {
   if (!a66) return ''
@@ -189,23 +125,6 @@ function resolveSubCat(a66: string | undefined): string {
   if (!entry) return a66
   return appLang.value === 'ar' ? (entry.arabic || entry.eng || a66) : (entry.eng || a66)
 }
-
-// Asset Descriptions lookup: A67 → eng/arabic
-const assetDescMap = ref<Record<string, { eng: string, arabic: string }>>({})
-async function fetchAssetDescMap() {
-  try {
-    const data = await $fetch<{ success: boolean, descriptions: any[] }>('/api/bigquery/asset-descriptions')
-    if (data.success && data.descriptions) {
-      const m: Record<string, { eng: string, arabic: string }> = {}
-      for (const r of data.descriptions) {
-        if (r.A67) m[r.A67] = { eng: r.eng || r.A67, arabic: r.arabic || r.A67 }
-      }
-      assetDescMap.value = m
-    }
-  }
-  catch { /* ignore */ }
-}
-fetchAssetDescMap()
 
 function resolveAssetDesc(a67: string | undefined): string {
   if (!a67) return ''
@@ -234,9 +153,10 @@ function resolveLevel3(a9: string | undefined): string {
   if (!entry) return a9
   return appLang.value === 'ar' ? (entry.arabic || entry.eng || a9) : (entry.eng || a9)
 }
+
 function resolveUser(a2: string | undefined): string {
   if (!a2) return ''
-  return usersMap.value[a2] || a2
+  return furnitureUsersMap.value[a2] || a2
 }
 
 watch(page, () => fetchData())
@@ -380,6 +300,13 @@ async function syncPartition(partIndex: number) {
 
 // Columns — labels resolved from etgLanguage based on current language
 const { resolve: resolveLang, lang: appLang } = useAppLanguage()
+const { qrUrl } = useQRCode()
+
+// QR Code popup
+const qrPopup = ref({ show: false, value: '', label: '' })
+function showQR(value: string, label: string) {
+  qrPopup.value = { show: true, value, label }
+}
 
 const IMAGE_COLS = ['A69', 'A71', 'A72']
 const columnDefs = [
@@ -394,7 +321,7 @@ const columnDefs = [
   { key: 'A68', fallback: 'Condition', width: '120px' },
   { key: 'A71', fallback: 'Photo 2', width: '60px', isImage: true },
   { key: 'A72', fallback: 'Photo 3', width: '60px', isImage: true },
-  { key: 'A75', fallback: 'A75', width: '100px' },
+  { key: 'A75', fallback: 'Asset Condition', width: '120px' },
   { key: 'A76', fallback: 'A76', width: '100px' },
   { key: 'A77', fallback: 'A77', width: '100px' },
   { key: 'A78', fallback: 'A78', width: '100px' },
@@ -830,7 +757,17 @@ function statusLabel(status: string) {
                 </div>
               </template>
               <template v-else-if="col.key === 'A70'">
-                <span class="font-medium font-mono text-xs">{{ row.A70 || '—' }}</span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    v-if="row.A70"
+                    class="size-6 shrink-0 rounded border border-border/40 hover:border-primary/50 p-0.5 transition-colors bg-white"
+                    :title="`QR: ${row.A70}`"
+                    @click.stop="showQR(row.A70, 'Tag Number')"
+                  >
+                    <img :src="qrUrl(row.A70, 48)" class="size-full" loading="lazy" />
+                  </button>
+                  <span class="font-medium font-mono text-xs">{{ row.A70 || '—' }}</span>
+                </div>
               </template>
               <template v-else-if="col.key === 'A7'">
                 <div class="flex items-center justify-center">
@@ -880,6 +817,14 @@ function statusLabel(status: string) {
                   <Icon v-if="resolveUser(row.A2) && resolveUser(row.A2) !== row.A2" name="i-lucide-user" class="size-3 text-muted-foreground shrink-0" />
                   {{ resolveUser(row.A2) || '—' }}
                 </span>
+              </template>
+              <template v-else-if="col.key === 'A75'">
+                <span
+                  v-if="row.A75"
+                  class="text-sm whitespace-nowrap"
+                  :dir="appLang === 'ar' ? 'rtl' : 'ltr'"
+                >{{ resolveLang(row.A75) }}</span>
+                <span v-else class="text-sm text-muted-foreground">—</span>
               </template>
               <template v-else-if="col.key === 'A79'">
                 <a
@@ -1054,6 +999,32 @@ function statusLabel(status: string) {
                 Done
               </Button>
             </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <!-- QR Code Popup -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="qrPopup.show"
+          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          @click.self="qrPopup.show = false"
+        >
+          <div class="bg-card rounded-2xl border shadow-2xl p-8 flex flex-col items-center gap-4 min-w-[280px]">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{{ qrPopup.label }}</p>
+            <div class="bg-white rounded-xl p-4">
+              <img :src="qrUrl(qrPopup.value, 200)" class="size-[200px]" />
+            </div>
+            <p class="text-lg font-bold font-mono tabular-nums">{{ qrPopup.value }}</p>
+            <Button variant="outline" size="sm" @click="qrPopup.show = false">Close</Button>
           </div>
         </div>
       </Transition>
