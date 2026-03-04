@@ -44,7 +44,6 @@ const selCondition = ref<string[]>([])
 const selUser = ref<string[]>([])
 const dateFrom = ref('')
 const dateTo = ref('')
-
 const filterSearch = reactive({ level1: '', level2: '', level3: '', subCat: '', condition: '', user: '' })
 
 function parseTS(val: string | undefined): Date | null {
@@ -54,15 +53,9 @@ function parseTS(val: string | undefined): Date | null {
   return new Date(+parts[3]!, +parts[1]! - 1, +parts[2]!, +parts[4]!, +parts[5]!, +parts[6]!)
 }
 
-// Level 2 name merge
 const level2NameToIds = computed(() => {
   const map: Record<string, Set<string>> = {}
-  for (const r of rows.value) {
-    const id = r.A8; if (!id) continue
-    const name = resolveL2(id)
-    if (!map[name]) map[name] = new Set()
-    map[name].add(id)
-  }
+  for (const r of rows.value) { const id = r.A8; if (!id) continue; const name = resolveL2(id); if (!map[name]) map[name] = new Set(); map[name].add(id) }
   return Object.fromEntries(Object.entries(map).map(([k, v]) => [k, [...v]]))
 })
 
@@ -71,8 +64,7 @@ function filterExcluding(excludeKey: string): any[] {
   let recs = [...rows.value]
   if (excludeKey !== 'level1' && selLevel1.value.length) recs = recs.filter(r => selLevel1.value.includes(r.A7))
   if (excludeKey !== 'level2' && selLevel2.value.length) {
-    const ids = new Set<string>()
-    for (const name of selLevel2.value) { for (const id of (level2NameToIds.value[name] || [])) ids.add(id) }
+    const ids = new Set<string>(); for (const name of selLevel2.value) { for (const id of (level2NameToIds.value[name] || [])) ids.add(id) }
     recs = recs.filter(r => ids.has(r.A8))
   }
   if (excludeKey !== 'level3' && selLevel3.value.length) recs = recs.filter(r => selLevel3.value.includes(r.A9))
@@ -85,34 +77,24 @@ function filterExcluding(excludeKey: string): any[] {
 function countSorted(recs: any[], field: string, resolverMap?: Record<string, { eng: string, arabic: string }>): { value: string, label: string, count: number }[] {
   const counts: Record<string, number> = {}
   for (const r of recs) { const v = r[field]; if (!v) continue; counts[v] = (counts[v] || 0) + 1 }
-  return Object.entries(counts)
-    .map(([value, count]) => ({ value, label: resolverMap ? rl(resolverMap, value) : value, count }))
-    .sort((a, b) => b.count - a.count)
+  return Object.entries(counts).map(([value, count]) => ({ value, label: resolverMap ? rl(resolverMap, value) : value, count })).sort((a, b) => b.count - a.count)
 }
-
 function level2Sorted(recs: any[]): { value: string, label: string, count: number }[] {
   const counts: Record<string, number> = {}
-  for (const r of recs) {
-    const id = r.A8; if (!id) continue
-    const name = resolveL2(id)
-    counts[name] = (counts[name] || 0) + 1
-  }
+  for (const r of recs) { const id = r.A8; if (!id) continue; counts[resolveL2(id)] = (counts[resolveL2(id)] || 0) + 1 }
   return Object.entries(counts).map(([value, count]) => ({ value, label: value, count })).sort((a, b) => b.count - a.count)
 }
-
 function condSorted(recs: any[]): { value: string, label: string, count: number }[] {
   const counts: Record<string, number> = {}
   for (const r of recs) { const v = r.A75; if (!v) continue; counts[v] = (counts[v] || 0) + 1 }
   return Object.entries(counts).map(([value, count]) => ({ value, label: resolveLang(value), count })).sort((a, b) => b.count - a.count)
 }
-
 function userSorted(recs: any[]): { value: string, label: string, count: number }[] {
   const counts: Record<string, number> = {}
   for (const r of recs) { const v = r.A2; if (!v) continue; counts[v] = (counts[v] || 0) + 1 }
   return Object.entries(counts).map(([value, count]) => ({ value, label: resolveUser(value), count })).sort((a, b) => b.count - a.count)
 }
 
-// Filter option sets
 const level1Opts = computed(() => countSorted(filterExcluding('level1'), 'A7', level1Map.value))
 const level2Opts = computed(() => level2Sorted(filterExcluding('level2')))
 const level3Opts = computed(() => countSorted(filterExcluding('level3'), 'A9', level3Map.value))
@@ -120,28 +102,11 @@ const subCatOpts = computed(() => countSorted(filterExcluding('subCat'), 'A66', 
 const conditionOpts = computed(() => condSorted(filterExcluding('condition')))
 const userOpts = computed(() => userSorted(filterExcluding('user')))
 
-// Toggle / clear helpers
-const filterRefs: Record<string, Ref<string[]>> = {
-  level1: selLevel1, level2: selLevel2, level3: selLevel3,
-  subCat: selSubCat, condition: selCondition, user: selUser,
-}
-function toggleFilter(key: string, val: string) {
-  const arr = filterRefs[key]; if (!arr) return
-  const idx = arr.value.indexOf(val)
-  if (idx >= 0) arr.value.splice(idx, 1)
-  else arr.value.push(val)
-}
+const filterRefs: Record<string, Ref<string[]>> = { level1: selLevel1, level2: selLevel2, level3: selLevel3, subCat: selSubCat, condition: selCondition, user: selUser }
+function toggleFilter(key: string, val: string) { const arr = filterRefs[key]; if (!arr) return; const idx = arr.value.indexOf(val); if (idx >= 0) arr.value.splice(idx, 1); else arr.value.push(val) }
 function clearFilter(key: string) { const arr = filterRefs[key]; if (arr) arr.value = [] }
-function clearAllFilters() {
-  selLevel1.value = []; selLevel2.value = []; selLevel3.value = []
-  selSubCat.value = []; selCondition.value = []; selUser.value = []
-  dateFrom.value = ''; dateTo.value = ''; searchQuery.value = ''
-}
-const hasFilters = computed(() =>
-  selLevel1.value.length || selLevel2.value.length || selLevel3.value.length ||
-  selSubCat.value.length || selCondition.value.length || selUser.value.length ||
-  dateFrom.value || dateTo.value || searchQuery.value.trim(),
-)
+function clearAllFilters() { selLevel1.value = []; selLevel2.value = []; selLevel3.value = []; selSubCat.value = []; selCondition.value = []; selUser.value = []; dateFrom.value = ''; dateTo.value = ''; searchQuery.value = '' }
+const hasFilters = computed(() => selLevel1.value.length || selLevel2.value.length || selLevel3.value.length || selSubCat.value.length || selCondition.value.length || selUser.value.length || dateFrom.value || dateTo.value || searchQuery.value.trim())
 
 function filteredSearchOpts(opts: { value: string, label: string, count: number }[], search: string) {
   if (!search.trim()) return opts
@@ -149,85 +114,181 @@ function filteredSearchOpts(opts: { value: string, label: string, count: number 
   return opts.filter(o => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
 }
 
-// ─── Filtered data ──────────────────────────────────────────
+// ─── Filtered rows ──────────────────────────────────────────
 const filteredRows = computed(() => {
   let recs = [...rows.value]
   if (selLevel1.value.length) recs = recs.filter(r => selLevel1.value.includes(r.A7))
-  if (selLevel2.value.length) {
-    const ids = new Set<string>()
-    for (const name of selLevel2.value) { for (const id of (level2NameToIds.value[name] || [])) ids.add(id) }
-    recs = recs.filter(r => ids.has(r.A8))
-  }
+  if (selLevel2.value.length) { const ids = new Set<string>(); for (const name of selLevel2.value) { for (const id of (level2NameToIds.value[name] || [])) ids.add(id) }; recs = recs.filter(r => ids.has(r.A8)) }
   if (selLevel3.value.length) recs = recs.filter(r => selLevel3.value.includes(r.A9))
   if (selSubCat.value.length) recs = recs.filter(r => selSubCat.value.includes(r.A66))
   if (selCondition.value.length) recs = recs.filter(r => selCondition.value.includes(r.A75))
   if (selUser.value.length) recs = recs.filter(r => selUser.value.includes(r.A2))
   if (dateFrom.value) { const f = new Date(dateFrom.value); recs = recs.filter(r => { const d = parseTS(r.A213); return d && d >= f }) }
   if (dateTo.value) { const t = new Date(dateTo.value); t.setHours(23, 59, 59, 999); recs = recs.filter(r => { const d = parseTS(r.A213); return d && d <= t }) }
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
-    recs = recs.filter(r => [r.A70, r.A222, r.A77].filter(Boolean).some(v => String(v).toLowerCase().includes(q)))
-  }
+  if (searchQuery.value.trim()) { const q = searchQuery.value.toLowerCase(); recs = recs.filter(r => [r.A70, r.A222, r.A77].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) }
   return recs
 })
 
-// ─── Parse coords ───────────────────────────────────────────
-interface MapPin {
-  lat: number; lng: number; assetCode: string; entity: string; level2: string
-  level3: string; condition: string; user: string; description: string
-}
+// ─── Parse coords into lightweight array ────────────────────
+interface GeoPoint { lat: number; lng: number; cond: string; entity: string; code: string; l2: string; l3: string; user: string; desc: string }
 
-const mapPins = computed<MapPin[]>(() => {
-  const pins: MapPin[] = []
+const geoPoints = computed<GeoPoint[]>(() => {
+  const pts: GeoPoint[] = []
   for (const r of filteredRows.value) {
     const raw = r.A79
     if (!raw || typeof raw !== 'string' || !raw.includes(',')) continue
     const parts = raw.replace(/\s/g, '').split(',')
-    const lat = parseFloat(parts[0] || '')
-    const lng = parseFloat(parts[1] || '')
+    const lat = parseFloat(parts[0] || ''); const lng = parseFloat(parts[1] || '')
     if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) continue
-    pins.push({
-      lat, lng,
-      assetCode: r.A70 || '',
-      entity: r.A7 || '',
-      level2: r.A8 || '',
-      level3: r.A9 || '',
-      condition: r.A75 || '',
-      user: r.A2 || '',
-      description: r.A222 || r.A67 || '',
-    })
+    pts.push({ lat, lng, cond: r.A75 || '', entity: r.A7 || '', code: r.A70 || '', l2: r.A8 || '', l3: r.A9 || '', user: r.A2 || '', desc: r.A222 || r.A67 || '' })
   }
-  return pins
+  return pts
 })
 
-const totalWithCoords = computed(() => mapPins.value.length)
-const totalWithoutCoords = computed(() => filteredRows.value.length - mapPins.value.length)
+const totalWithCoords = computed(() => geoPoints.value.length)
+const totalWithoutCoords = computed(() => filteredRows.value.length - geoPoints.value.length)
+
+// ─── Spatial grid clustering ────────────────────────────────
+// Group points into grid cells based on zoom level. This ensures O(n)
+// clustering regardless of point count, and only renders ~100-500 cluster
+// circles (not 200k+ DOM elements).
+interface Cluster { lat: number; lng: number; count: number; topCond: string; points: GeoPoint[] }
+
+function clusterPoints(points: GeoPoint[], gridSize: number): Cluster[] {
+  const grid: Record<string, { sumLat: number; sumLng: number; count: number; conds: Record<string, number>; points: GeoPoint[] }> = {}
+  for (const p of points) {
+    const gx = Math.round(p.lat / gridSize); const gy = Math.round(p.lng / gridSize)
+    const key = `${gx},${gy}`
+    if (!grid[key]) grid[key] = { sumLat: 0, sumLng: 0, count: 0, conds: {}, points: [] }
+    const cell = grid[key]
+    cell.sumLat += p.lat; cell.sumLng += p.lng; cell.count++
+    cell.conds[p.cond] = (cell.conds[p.cond] || 0) + 1
+    if (cell.points.length < 20) cell.points.push(p) // Keep sample for popups
+  }
+  return Object.values(grid).map(c => ({
+    lat: c.sumLat / c.count, lng: c.sumLng / c.count, count: c.count,
+    topCond: Object.entries(c.conds).sort((a, b) => b[1] - a[1])[0]?.[0] || '',
+    points: c.points,
+  }))
+}
 
 // ─── Map management ─────────────────────────────────────────
 const mapContainer = ref<HTMLDivElement | null>(null)
 let map: any = null
-let markerClusterGroup: any = null
-let heatLayer: any = null
-const mapMode = ref<'pins' | 'heat'>('pins')
+let clusterLayer: any = null
 const mapReady = ref(false)
+const mapMode = ref<'clusters' | 'heat'>('clusters')
 
-// Condition color mapping
 function condColor(cond: string): string {
-  const c = cond.toLowerCase()
+  const c = (cond || '').toLowerCase()
   if (c === 'good' || c === 'excellent' || c === '3') return '#10b981'
   if (c === 'fair' || c === '2' || c === 'average') return '#f59e0b'
   if (c === 'poor' || c === '1' || c === 'bad' || c === 'damaged') return '#ef4444'
   return '#6366f1'
 }
 
-function createIcon(color: string) {
+function gridSizeForZoom(zoom: number): number {
+  if (zoom >= 16) return 0.0005
+  if (zoom >= 14) return 0.002
+  if (zoom >= 12) return 0.005
+  if (zoom >= 10) return 0.02
+  if (zoom >= 8) return 0.1
+  if (zoom >= 6) return 0.5
+  return 2
+}
+
+function renderClusters() {
+  if (!map || !mapReady.value) return
   const L = (window as any).L
-  return L.divIcon({
-    html: `<div style="background:${color};width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>`,
-    className: 'custom-pin',
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
-  })
+
+  if (clusterLayer) { map.removeLayer(clusterLayer); clusterLayer = null }
+
+  const pts = geoPoints.value
+  if (pts.length === 0) return
+
+  const zoom = map.getZoom()
+  const gridSize = gridSizeForZoom(zoom)
+  const clusters = clusterPoints(pts, gridSize)
+  const maxCount = Math.max(...clusters.map(c => c.count), 1)
+
+  clusterLayer = L.layerGroup()
+
+  if (mapMode.value === 'clusters') {
+    for (const cl of clusters) {
+      const color = condColor(cl.topCond)
+      const radius = cl.count === 1
+        ? 5
+        : Math.min(35, 8 + Math.sqrt(cl.count / maxCount) * 25)
+
+      const circle = L.circleMarker([cl.lat, cl.lng], {
+        radius,
+        fillColor: color,
+        fillOpacity: cl.count === 1 ? 0.9 : 0.6,
+        stroke: true,
+        color: 'rgba(255,255,255,0.5)',
+        weight: cl.count === 1 ? 1 : 2,
+      })
+
+      // Popup content
+      if (cl.count === 1 && cl.points[0]) {
+        const p = cl.points[0]
+        circle.bindPopup(`
+          <div style="font-family:system-ui;min-width:180px;font-size:13px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:6px">${p.code || 'Unknown'}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px;color:var(--muted-fg,#94a3b8)">
+              <span>Entity</span><span style="color:var(--fg,#e2e8f0)">${resolveL1(p.entity)}</span>
+              <span>Level 2</span><span style="color:var(--fg,#e2e8f0)">${resolveL2(p.l2)}</span>
+              <span>Level 3</span><span style="color:var(--fg,#e2e8f0)">${resolveL3(p.l3)}</span>
+              <span>Condition</span><span style="color:${color};font-weight:600">${p.cond ? resolveLang(p.cond) : '—'}</span>
+              <span>User</span><span style="color:var(--fg,#e2e8f0)">${resolveUser(p.user)}</span>
+            </div>
+          </div>
+        `, { className: 'map-popup-dark', maxWidth: 280 })
+      } else {
+        circle.bindPopup(`
+          <div style="font-family:system-ui;min-width:140px;font-size:13px;text-align:center">
+            <div style="font-weight:700;font-size:20px;margin-bottom:4px">${cl.count.toLocaleString()}</div>
+            <div style="font-size:11px;color:var(--muted-fg,#94a3b8)">assets in this area</div>
+            <div style="font-size:11px;margin-top:6px;color:var(--muted-fg,#94a3b8)">Zoom in to see details</div>
+          </div>
+        `, { className: 'map-popup-dark', maxWidth: 200 })
+      }
+
+      // Show count label for clusters > 1
+      if (cl.count > 1) {
+        const labelSize = radius * 2
+        const label = L.marker([cl.lat, cl.lng], {
+          icon: L.divIcon({
+            html: `<div style="display:flex;align-items:center;justify-content:center;width:${labelSize}px;height:${labelSize}px;font-size:${Math.max(9, Math.min(13, radius * 0.5))}px;font-weight:700;color:white;text-shadow:0 1px 3px rgba(0,0,0,.5);pointer-events:none">${cl.count > 999 ? Math.round(cl.count / 1000) + 'k' : cl.count}</div>`,
+            className: 'cluster-label',
+            iconSize: [labelSize, labelSize],
+            iconAnchor: [labelSize / 2, labelSize / 2],
+          }),
+          interactive: false,
+        })
+        clusterLayer.addLayer(label)
+      }
+
+      clusterLayer.addLayer(circle)
+    }
+  } else {
+    // Heat mode — softer larger circles
+    for (const cl of clusters) {
+      const color = condColor(cl.topCond)
+      const radius = Math.min(50, 10 + Math.sqrt(cl.count / maxCount) * 40)
+      L.circleMarker([cl.lat, cl.lng], {
+        radius,
+        fillColor: color,
+        fillOpacity: 0.25,
+        stroke: true,
+        color,
+        weight: 1,
+        opacity: 0.3,
+      }).addTo(clusterLayer)
+    }
+  }
+
+  clusterLayer.addTo(map)
 }
 
 async function initMap() {
@@ -236,154 +297,60 @@ async function initMap() {
   ;(window as any).L = L
 
   map = L.map(mapContainer.value, {
-    center: [24.7136, 46.6753], // Riyadh default
+    center: [24.7136, 46.6753],
     zoom: 6,
     zoomControl: false,
     attributionControl: false,
+    preferCanvas: true, // Canvas renderer for performance
   })
 
-  // Dark-friendly tiles
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 19,
     subdomains: 'abcd',
   }).addTo(map)
 
-  // Zoom control bottom-right
   L.control.zoom({ position: 'bottomright' }).addTo(map)
-
-  // Attribution bottom-left
   L.control.attribution({ position: 'bottomleft', prefix: false })
     .addAttribution('© <a href="https://carto.com" target="_blank">CARTO</a> · © <a href="https://osm.org" target="_blank">OSM</a>')
     .addTo(map)
 
+  // Re-cluster on zoom
+  map.on('zoomend', () => { renderClusters() })
+
   mapReady.value = true
-  updateMarkers()
+  fitAndRender()
 }
 
-function updateMarkers() {
+function fitAndRender() {
   if (!map || !mapReady.value) return
   const L = (window as any).L
-
-  // Clear existing
-  if (markerClusterGroup) { map.removeLayer(markerClusterGroup); markerClusterGroup = null }
-  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null }
-
-  const pins = mapPins.value
-  if (pins.length === 0) return
-
-  if (mapMode.value === 'pins') {
-    // Use simple marker layer group with custom icons
-    markerClusterGroup = L.layerGroup()
-
-    for (const pin of pins) {
-      const color = condColor(pin.condition)
-      const icon = createIcon(color)
-      const marker = L.marker([pin.lat, pin.lng], { icon })
-      const condLabel = pin.condition ? resolveLang(pin.condition) : '—'
-      marker.bindPopup(`
-        <div style="font-family:system-ui;min-width:180px;font-size:13px">
-          <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:#f8fafc">${pin.assetCode || 'Unknown'}</div>
-          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px;color:#94a3b8">
-            <span>Entity</span><span style="color:#e2e8f0">${resolveL1(pin.entity)}</span>
-            <span>Level 2</span><span style="color:#e2e8f0">${resolveL2(pin.level2)}</span>
-            <span>Level 3</span><span style="color:#e2e8f0">${resolveL3(pin.level3)}</span>
-            <span>Condition</span><span style="color:${color};font-weight:600">${condLabel}</span>
-            <span>User</span><span style="color:#e2e8f0">${resolveUser(pin.user)}</span>
-            ${pin.description ? `<span>Description</span><span style="color:#e2e8f0" dir="rtl">${pin.description}</span>` : ''}
-          </div>
-          <div style="margin-top:8px;text-align:right">
-            <a href="https://www.google.com/maps?q=${pin.lat},${pin.lng}" target="_blank" style="color:#60a5fa;font-size:11px;text-decoration:none">Open in Maps ↗</a>
-          </div>
-        </div>
-      `, {
-        className: 'map-popup-dark',
-        maxWidth: 280,
-      })
-
-      markerClusterGroup.addLayer(marker)
-    }
-
-    markerClusterGroup.addTo(map)
+  const pts = geoPoints.value
+  if (pts.length > 0) {
+    const bounds = L.latLngBounds(pts.map((p: GeoPoint) => [p.lat, p.lng]))
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14, animate: false })
   }
-  else {
-    // Heat mode — circle markers with varying radius by density
-    const points: [number, number][] = pins.map(p => [p.lat, p.lng])
-
-    // Use circle markers with transparency for heat effect
-    markerClusterGroup = L.layerGroup()
-    for (const pin of pins) {
-      const circle = L.circleMarker([pin.lat, pin.lng], {
-        radius: 6,
-        fillColor: condColor(pin.condition),
-        fillOpacity: 0.5,
-        stroke: false,
-      })
-      markerClusterGroup.addLayer(circle)
-    }
-
-    // Add larger "heat" circles at clustered positions
-    const gridSize = 0.005
-    const grid: Record<string, { lat: number, lng: number, count: number, conditions: Record<string, number> }> = {}
-    for (const pin of pins) {
-      const gx = Math.round(pin.lat / gridSize) * gridSize
-      const gy = Math.round(pin.lng / gridSize) * gridSize
-      const key = `${gx},${gy}`
-      if (!grid[key]) grid[key] = { lat: gx, lng: gy, count: 0, conditions: {} }
-      grid[key].count++
-      grid[key].conditions[pin.condition] = (grid[key].conditions[pin.condition] || 0) + 1
-    }
-
-    for (const cell of Object.values(grid)) {
-      const topCond = Object.entries(cell.conditions).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
-      const radius = Math.min(40, 8 + Math.sqrt(cell.count) * 4)
-      L.circleMarker([cell.lat, cell.lng], {
-        radius,
-        fillColor: condColor(topCond),
-        fillOpacity: 0.25,
-        stroke: true,
-        color: condColor(topCond),
-        weight: 1,
-        opacity: 0.4,
-      }).addTo(markerClusterGroup)
-    }
-
-    markerClusterGroup.addTo(map)
-  }
-
-  // Fit bounds if pins exist
-  if (pins.length > 0) {
-    const bounds = L.latLngBounds(pins.map(p => [p.lat, p.lng]))
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
-  }
+  renderClusters()
 }
 
-// Watch for filter/mode changes
-watch([mapPins, mapMode], () => {
-  nextTick(() => updateMarkers())
+// Watch filter changes — debounced to avoid hammering on rapid selections
+let renderTimeout: ReturnType<typeof setTimeout> | null = null
+watch([geoPoints, mapMode], () => {
+  if (renderTimeout) clearTimeout(renderTimeout)
+  renderTimeout = setTimeout(() => { fitAndRender() }, 200)
 }, { deep: true })
 
 onMounted(async () => {
   isMounted.value = true
-  // Wait for data then init map
   const stop = watch(furnitureRowsReady, (ready) => {
-    if (ready) {
-      nextTick(() => {
-        initMap()
-        stop()
-      })
-    }
+    if (ready) { nextTick(() => { initMap(); stop() }) }
   }, { immediate: true })
 })
 
-onBeforeUnmount(() => {
-  if (map) { map.remove(); map = null }
-})
+onBeforeUnmount(() => { if (map) { map.remove(); map = null } })
 
-// ─── Entrance animation ─────────────────────────────────────
 const entered = ref(false)
 onMounted(() => { requestAnimationFrame(() => { entered.value = true }) })
 
-// ─── Filter sections config ─────────────────────────────────
 const filterSections = computed(() => [
   { key: 'level1', title: 'Entity', opts: level1Opts.value, sel: selLevel1.value },
   { key: 'level2', title: 'Level 2', opts: level2Opts.value, sel: selLevel2.value },
@@ -396,7 +363,6 @@ const filterSections = computed(() => [
 
 <template>
   <div class="w-full flex-1 min-h-0 flex">
-    <!-- Toolbar -->
     <Teleport v-if="isMounted" to="#header-toolbar">
       <div class="flex items-center gap-2 w-full justify-end">
         <div class="relative max-w-[200px]">
@@ -416,36 +382,21 @@ const filterSections = computed(() => [
     </Teleport>
 
     <!-- ═══ FILTER SIDEBAR ═══ -->
-    <Transition
-      enter-active-class="transition-all duration-300 ease-out"
-      enter-from-class="w-0 opacity-0"
-      enter-to-class="w-[260px] opacity-100"
-      leave-active-class="transition-all duration-200 ease-in"
-      leave-from-class="w-[260px] opacity-100"
-      leave-to-class="w-0 opacity-0"
-    >
+    <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="w-0 opacity-0" enter-to-class="w-[260px] opacity-100" leave-active-class="transition-all duration-200 ease-in" leave-from-class="w-[260px] opacity-100" leave-to-class="w-0 opacity-0">
       <aside v-if="!sidebarCollapsed" class="w-[260px] shrink-0 border-r overflow-y-auto overflow-x-hidden bg-card/50">
         <div class="p-3 space-y-3">
-
-          <!-- Map stats -->
           <div class="rounded-lg border bg-gradient-to-br from-blue-500/5 to-violet-500/5 p-3">
             <div class="grid grid-cols-2 gap-2">
               <div class="text-center">
-                <p class="text-lg font-bold tabular-nums text-emerald-500">
-                  <NumberFlow :value="totalWithCoords" :animated="true" />
-                </p>
+                <p class="text-lg font-bold tabular-nums text-emerald-500"><NumberFlow :value="totalWithCoords" :animated="true" /></p>
                 <p class="text-[9px] text-muted-foreground uppercase tracking-wider">With GPS</p>
               </div>
               <div class="text-center">
-                <p class="text-lg font-bold tabular-nums text-muted-foreground/60">
-                  <NumberFlow :value="totalWithoutCoords" :animated="true" />
-                </p>
+                <p class="text-lg font-bold tabular-nums text-muted-foreground/60"><NumberFlow :value="totalWithoutCoords" :animated="true" /></p>
                 <p class="text-[9px] text-muted-foreground uppercase tracking-wider">No GPS</p>
               </div>
             </div>
           </div>
-
-          <!-- Date range -->
           <div>
             <h4 class="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider mb-2">Date Range</h4>
             <div class="grid grid-cols-2 gap-1.5">
@@ -453,19 +404,11 @@ const filterSections = computed(() => [
               <Input v-model="dateTo" type="date" class="h-7 text-[11px]" />
             </div>
           </div>
-
-          <!-- Filters (same as furniture) -->
           <template v-for="section in filterSections" :key="section.key">
             <div>
               <div class="flex items-center justify-between mb-1.5">
                 <h4 class="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">{{ section.title }}</h4>
-                <button
-                  v-if="section.sel.length"
-                  class="text-[9px] text-primary hover:underline"
-                  @click="clearFilter(section.key)"
-                >
-                  Clear ({{ section.sel.length }})
-                </button>
+                <button v-if="section.sel.length" class="text-[9px] text-primary hover:underline" @click="clearFilter(section.key)">Clear ({{ section.sel.length }})</button>
               </div>
               <div v-if="section.opts.length > 6" class="mb-1">
                 <Input v-model="filterSearch[section.key as keyof typeof filterSearch]" placeholder="Filter..." class="h-6 text-[10px]" />
@@ -478,10 +421,7 @@ const filterSections = computed(() => [
                   :class="section.sel.includes(opt.value) ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-foreground/80'"
                   @click="toggleFilter(section.key, opt.value)"
                 >
-                  <div
-                    class="size-3 rounded border shrink-0 flex items-center justify-center transition-colors"
-                    :class="section.sel.includes(opt.value) ? 'bg-primary border-primary' : 'border-border'"
-                  >
+                  <div class="size-3 rounded border shrink-0 flex items-center justify-center transition-colors" :class="section.sel.includes(opt.value) ? 'bg-primary border-primary' : 'border-border'">
                     <Icon v-if="section.sel.includes(opt.value)" name="i-lucide-check" class="size-2 text-primary-foreground" />
                   </div>
                   <span class="truncate flex-1">{{ opt.label }}</span>
@@ -496,8 +436,6 @@ const filterSections = computed(() => [
 
     <!-- ═══ MAP AREA ═══ -->
     <div class="flex-1 min-w-0 relative">
-
-      <!-- Loading state -->
       <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-background z-10">
         <div class="flex flex-col items-center gap-4 text-muted-foreground">
           <div class="size-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-violet-500/20 flex items-center justify-center">
@@ -513,102 +451,48 @@ const filterSections = computed(() => [
         </div>
       </div>
 
-      <!-- Map container -->
       <div ref="mapContainer" class="absolute inset-0" />
 
-      <!-- Map mode toggle (overlaid on map) -->
-      <div
-        v-if="mapReady"
-        class="absolute top-4 left-4 z-[400] flex rounded-lg overflow-hidden border shadow-lg bg-card/90 backdrop-blur-md transition-all duration-500"
-        :class="entered ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'"
-      >
-        <button
-          class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5"
-          :class="mapMode === 'pins' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'"
-          @click="mapMode = 'pins'"
-        >
-          <Icon name="i-lucide-map-pin" class="size-3" /> Pins
+      <!-- Mode toggle -->
+      <div v-if="mapReady" class="absolute top-4 left-4 z-[400] flex rounded-lg overflow-hidden border shadow-lg bg-card/90 backdrop-blur-md transition-all duration-500" :class="entered ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'">
+        <button class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5" :class="mapMode === 'clusters' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'" @click="mapMode = 'clusters'">
+          <Icon name="i-lucide-map-pin" class="size-3" /> Clusters
         </button>
-        <button
-          class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5"
-          :class="mapMode === 'heat' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'"
-          @click="mapMode = 'heat'"
-        >
+        <button class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5" :class="mapMode === 'heat' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'" @click="mapMode = 'heat'">
           <Icon name="i-lucide-flame" class="size-3" /> Heat
         </button>
       </div>
 
-      <!-- Legend (overlaid on map) -->
-      <div
-        v-if="mapReady"
-        class="absolute bottom-6 left-4 z-[400] rounded-lg border shadow-lg bg-card/90 backdrop-blur-md p-3 transition-all duration-500"
-        :class="entered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'"
-      >
+      <!-- Legend -->
+      <div v-if="mapReady" class="absolute bottom-6 left-4 z-[400] rounded-lg border shadow-lg bg-card/90 backdrop-blur-md p-3 transition-all duration-500" :class="entered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'">
         <p class="text-[9px] font-semibold uppercase text-muted-foreground tracking-wider mb-2">Condition</p>
         <div class="space-y-1.5">
-          <div class="flex items-center gap-2">
-            <div class="size-3 rounded-full bg-emerald-500 ring-1 ring-white/20" />
-            <span class="text-[11px]">Good / Excellent</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="size-3 rounded-full bg-amber-500 ring-1 ring-white/20" />
-            <span class="text-[11px]">Fair / Average</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="size-3 rounded-full bg-red-500 ring-1 ring-white/20" />
-            <span class="text-[11px]">Poor / Damaged</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="size-3 rounded-full bg-indigo-500 ring-1 ring-white/20" />
-            <span class="text-[11px]">Other</span>
-          </div>
+          <div class="flex items-center gap-2"><div class="size-3 rounded-full bg-emerald-500 ring-1 ring-white/20" /><span class="text-[11px]">Good / Excellent</span></div>
+          <div class="flex items-center gap-2"><div class="size-3 rounded-full bg-amber-500 ring-1 ring-white/20" /><span class="text-[11px]">Fair / Average</span></div>
+          <div class="flex items-center gap-2"><div class="size-3 rounded-full bg-red-500 ring-1 ring-white/20" /><span class="text-[11px]">Poor / Damaged</span></div>
+          <div class="flex items-center gap-2"><div class="size-3 rounded-full bg-indigo-500 ring-1 ring-white/20" /><span class="text-[11px]">Other</span></div>
         </div>
       </div>
 
-      <!-- Stats badge (overlaid on map) -->
-      <div
-        v-if="mapReady"
-        class="absolute top-4 right-4 z-[400] rounded-lg border shadow-lg bg-card/90 backdrop-blur-md p-3 space-y-2 transition-all duration-500"
-        :class="entered ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'"
-      >
+      <!-- Stats badge -->
+      <div v-if="mapReady" class="absolute top-4 right-4 z-[400] rounded-lg border shadow-lg bg-card/90 backdrop-blur-md p-3 space-y-2 transition-all duration-500" :class="entered ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'">
         <div class="flex items-center gap-2">
-          <div class="size-6 rounded-md bg-blue-500/10 flex items-center justify-center">
-            <Icon name="i-lucide-map-pin" class="size-3 text-blue-500" />
-          </div>
-          <div>
-            <p class="text-xs font-bold tabular-nums"><NumberFlow :value="totalWithCoords" :animated="true" /></p>
-            <p class="text-[8px] text-muted-foreground">Geo-tagged</p>
-          </div>
+          <div class="size-6 rounded-md bg-blue-500/10 flex items-center justify-center"><Icon name="i-lucide-map-pin" class="size-3 text-blue-500" /></div>
+          <div><p class="text-xs font-bold tabular-nums"><NumberFlow :value="totalWithCoords" :animated="true" /></p><p class="text-[8px] text-muted-foreground">Geo-tagged</p></div>
         </div>
         <div class="flex items-center gap-2">
-          <div class="size-6 rounded-md bg-amber-500/10 flex items-center justify-center">
-            <Icon name="i-lucide-box" class="size-3 text-amber-500" />
-          </div>
-          <div>
-            <p class="text-xs font-bold tabular-nums"><NumberFlow :value="filteredRows.length" :animated="true" /></p>
-            <p class="text-[8px] text-muted-foreground">Total filtered</p>
-          </div>
+          <div class="size-6 rounded-md bg-amber-500/10 flex items-center justify-center"><Icon name="i-lucide-box" class="size-3 text-amber-500" /></div>
+          <div><p class="text-xs font-bold tabular-nums"><NumberFlow :value="filteredRows.length" :animated="true" /></p><p class="text-[8px] text-muted-foreground">Total filtered</p></div>
         </div>
       </div>
 
       <!-- No pins message -->
-      <div
-        v-if="mapReady && totalWithCoords === 0 && !loading"
-        class="absolute inset-0 z-[399] flex items-center justify-center pointer-events-none"
-      >
+      <div v-if="mapReady && totalWithCoords === 0 && !loading" class="absolute inset-0 z-[399] flex items-center justify-center pointer-events-none">
         <div class="bg-card/95 backdrop-blur-xl rounded-2xl border shadow-2xl p-8 flex flex-col items-center gap-3 pointer-events-auto max-w-xs text-center">
-          <div class="size-14 rounded-2xl bg-blue-500/10 flex items-center justify-center">
-            <Icon name="i-lucide-map-pin-off" class="size-7 text-blue-500/60" />
-          </div>
+          <div class="size-14 rounded-2xl bg-blue-500/10 flex items-center justify-center"><Icon name="i-lucide-map-pin-off" class="size-7 text-blue-500/60" /></div>
           <h3 class="text-sm font-semibold">No Geo-Tagged Assets</h3>
-          <p class="text-xs text-muted-foreground">
-            {{ filteredRows.length > 0
-              ? `${filteredRows.length.toLocaleString()} assets match your filters, but none have GPS coordinates (A79).`
-              : 'No assets match current filters.' }}
-          </p>
-          <Button v-if="hasFilters" variant="outline" size="sm" class="gap-1" @click="clearAllFilters">
-            <Icon name="i-lucide-x" class="size-3" /> Clear Filters
-          </Button>
+          <p class="text-xs text-muted-foreground">{{ filteredRows.length > 0 ? `${filteredRows.length.toLocaleString()} assets match your filters, but none have GPS coordinates.` : 'No assets match current filters.' }}</p>
+          <Button v-if="hasFilters" variant="outline" size="sm" class="gap-1" @click="clearAllFilters"><Icon name="i-lucide-x" class="size-3" /> Clear Filters</Button>
         </div>
       </div>
     </div>
@@ -616,51 +500,15 @@ const filterSections = computed(() => [
 </template>
 
 <style>
-/* Scoped map popup styling for dark theme */
-.map-popup-dark .leaflet-popup-content-wrapper {
-  background: hsl(222.2 84% 4.9%);
-  color: hsl(210 40% 98%);
-  border-radius: 12px;
-  border: 1px solid hsl(217.2 32.6% 17.5%);
-  box-shadow: 0 20px 40px rgba(0,0,0,.4);
-}
-.map-popup-dark .leaflet-popup-tip {
-  background: hsl(222.2 84% 4.9%);
-  border: 1px solid hsl(217.2 32.6% 17.5%);
-}
-.map-popup-dark .leaflet-popup-close-button {
-  color: hsl(215 20.2% 65.1%);
-  font-size: 18px;
-  padding: 6px 8px;
-}
-.map-popup-dark .leaflet-popup-close-button:hover {
-  color: hsl(210 40% 98%);
-}
-/* Custom pin removes Leaflet defaults */
-.custom-pin { background: none !important; border: none !important; }
-
-/* Light mode popup */
-:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper {
-  background: white;
-  color: #0f172a;
-  border-color: #e2e8f0;
-}
-:root:not(.dark) .map-popup-dark .leaflet-popup-tip {
-  background: white;
-  border-color: #e2e8f0;
-}
+.map-popup-dark .leaflet-popup-content-wrapper { background: hsl(222.2 84% 4.9%); color: hsl(210 40% 98%); border-radius: 12px; border: 1px solid hsl(217.2 32.6% 17.5%); box-shadow: 0 20px 40px rgba(0,0,0,.4); }
+.map-popup-dark .leaflet-popup-tip { background: hsl(222.2 84% 4.9%); border: 1px solid hsl(217.2 32.6% 17.5%); }
+.map-popup-dark .leaflet-popup-close-button { color: hsl(215 20.2% 65.1%); font-size: 18px; padding: 6px 8px; }
+.map-popup-dark .leaflet-popup-close-button:hover { color: hsl(210 40% 98%); }
+.cluster-label { background: none !important; border: none !important; }
+:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper { background: white; color: #0f172a; border-color: #e2e8f0; }
+:root:not(.dark) .map-popup-dark .leaflet-popup-tip { background: white; border-color: #e2e8f0; }
 :root:not(.dark) .map-popup-dark .leaflet-popup-close-button { color: #64748b; }
 :root:not(.dark) .map-popup-dark .leaflet-popup-close-button:hover { color: #0f172a; }
-
-/* Popup grid text in light mode */
-:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper span[style*="color:#e2e8f0"],
-:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper div[style*="color:#f8fafc"] {
-  color: #0f172a !important;
-}
-:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper span[style*="color:#94a3b8"] {
-  color: #64748b !important;
-}
-
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
