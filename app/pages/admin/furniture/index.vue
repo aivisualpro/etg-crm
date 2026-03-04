@@ -72,21 +72,37 @@ onMounted(() => {
   onUnmounted(() => document.removeEventListener('click', handler))
 })
 
+// Date filter tabs
+const dateFilter = ref('all')
+const dateCounts = ref<Record<string, number>>({})
+
+const dateTabs = [
+  { key: 'all', label: 'All' },
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: 'This Week' },
+  { key: 'month', label: 'This Month' },
+  { key: 'lastMonth', label: 'Last Month' },
+  { key: 'year', label: 'This Year' },
+]
+
 // Fetch data
 async function fetchData() {
   loading.value = true
   try {
     const params: Record<string, string | number> = { page: page.value, limit: limit.value }
     if (search.value.trim()) params.search = search.value.trim()
+    if (dateFilter.value && dateFilter.value !== 'all') params.dateFilter = dateFilter.value
 
     const data = await $fetch<{
-      success: boolean, rows: any[], total: number, totalPages: number, partitionCounts?: Record<string, number>
+      success: boolean, rows: any[], total: number, totalPages: number,
+      partitionCounts?: Record<string, number>, dateCounts?: Record<string, number>
     }>('/api/bigquery/furniture', { params })
 
     if (data.success) {
       rows.value = data.rows
       total.value = data.total
       totalPages.value = data.totalPages
+      if (data.dateCounts) dateCounts.value = data.dateCounts
     }
   }
   catch (e: any) {
@@ -96,7 +112,111 @@ async function fetchData() {
 }
 fetchData()
 
+// Users lookup: furniture A2 contains a number matching etgUsers.A201, display etgUsers.A2 (name)
+const usersMap = ref<Record<string, string>>({})
+async function fetchUsersMap() {
+  try {
+    const data = await $fetch<{ success: boolean, users: any[] }>('/api/bigquery/users')
+    if (data.success && data.users) {
+      const map: Record<string, string> = {}
+      for (const u of data.users) {
+        // A201 = phone/ID number (what furniture.A2 stores)
+        // A2 = user name (what we want to display)
+        if (u.A201) map[u.A201] = u.A2 || u.A201
+      }
+      usersMap.value = map
+    }
+  }
+  catch { /* ignore */ }
+}
+fetchUsersMap()
+
+// Levels lookup
+const level1Map = ref<Record<string, { logo: string, eng: string, arabic: string }>>({})
+const level2Map = ref<Record<string, { eng: string, arabic: string }>>({})
+const level3Map = ref<Record<string, { eng: string, arabic: string }>>({})
+
+async function fetchLevelsMap() {
+  try {
+    const data = await $fetch<{ success: boolean, level1: any[], level2: any[], level3: any[] }>('/api/bigquery/levels')
+    if (data.success) {
+      // Level 1: A7 → logo + eng/arabic
+      const m1: Record<string, { logo: string, eng: string, arabic: string }> = {}
+      for (const r of data.level1 || []) {
+        if (r.A7) m1[r.A7] = { logo: r.image_url || r.logo || '', eng: r.eng || r.A7, arabic: r.arabic || r.A7 }
+      }
+      level1Map.value = m1
+
+      // Level 2: A8 → eng/arabic
+      const m2: Record<string, { eng: string, arabic: string }> = {}
+      for (const r of data.level2 || []) {
+        if (r.A8) m2[r.A8] = { eng: r.eng || r.A8, arabic: r.arabic || r.A8 }
+      }
+      level2Map.value = m2
+
+      // Level 3: A9 → eng/arabic
+      const m3: Record<string, { eng: string, arabic: string }> = {}
+      for (const r of data.level3 || []) {
+        if (r.A9) m3[r.A9] = { eng: r.eng || r.A9, arabic: r.arabic || r.A9 }
+      }
+      level3Map.value = m3
+    }
+  }
+  catch { /* ignore */ }
+}
+fetchLevelsMap()
+
+// SubCategories lookup: A66 → eng/arabic
+const subCatMap = ref<Record<string, { eng: string, arabic: string }>>({})
+async function fetchSubCatMap() {
+  try {
+    const data = await $fetch<{ success: boolean, subCategories: any[] }>('/api/bigquery/asset-categories')
+    if (data.success && data.subCategories) {
+      const m: Record<string, { eng: string, arabic: string }> = {}
+      for (const r of data.subCategories) {
+        if (r.A66) m[r.A66] = { eng: r.eng || r.A66, arabic: r.arabic || r.A66 }
+      }
+      subCatMap.value = m
+    }
+  }
+  catch { /* ignore */ }
+}
+fetchSubCatMap()
+
+function resolveSubCat(a66: string | undefined): string {
+  if (!a66) return ''
+  const entry = subCatMap.value[a66]
+  if (!entry) return a66
+  return appLang.value === 'ar' ? (entry.arabic || entry.eng || a66) : (entry.eng || a66)
+}
+
+function resolveLevel1Logo(a7: string | undefined): string {
+  if (!a7) return ''
+  const entry = level1Map.value[a7]
+  if (!entry || !entry.logo) return ''
+  return entry.logo.startsWith('http') ? entry.logo : `/api/gcs/${entry.logo}`
+}
+
+function resolveLevel2(a8: string | undefined): string {
+  if (!a8) return ''
+  const entry = level2Map.value[a8]
+  if (!entry) return a8
+  return appLang.value === 'ar' ? (entry.arabic || entry.eng || a8) : (entry.eng || a8)
+}
+
+function resolveLevel3(a9: string | undefined): string {
+  if (!a9) return ''
+  const entry = level3Map.value[a9]
+  if (!entry) return a9
+  return appLang.value === 'ar' ? (entry.arabic || entry.eng || a9) : (entry.eng || a9)
+}
+function resolveUser(a2: string | undefined): string {
+  if (!a2) return ''
+  return usersMap.value[a2] || a2
+}
+
 watch(page, () => fetchData())
+watch(dateFilter, () => { page.value = 1; fetchData() })
 let searchDebounce: ReturnType<typeof setTimeout>
 watch(search, () => {
   clearTimeout(searchDebounce)
@@ -234,29 +354,43 @@ async function syncPartition(partIndex: number) {
   }
 }
 
-// Columns
+// Columns — labels resolved from etgLanguage based on current language
+const { resolve: resolveLang, lang: appLang } = useAppLanguage()
+
 const IMAGE_COLS = ['A69', 'A71', 'A72']
-const columns = [
-  { key: 'A69', label: 'Photo 1', width: '60px', isImage: true },
-  { key: 'ID', label: 'ID', width: '90px' },
-  { key: 'A70', label: 'Asset Code', width: '120px' },
-  { key: 'A7', label: 'Level 1', width: '120px' },
-  { key: 'A8', label: 'Level 2', width: '100px' },
-  { key: 'A9', label: 'Level 3', width: '100px' },
-  { key: 'A66', label: 'A66', width: '100px' },
-  { key: 'A67', label: 'A67', width: '100px' },
-  { key: 'A222', label: 'Description', width: '180px' },
-  { key: 'A68', label: 'Condition', width: '120px' },
-  { key: 'A71', label: 'Photo 2', width: '60px', isImage: true },
-  { key: 'A72', label: 'Photo 3', width: '60px', isImage: true },
-  { key: 'A75', label: 'A75', width: '100px' },
-  { key: 'A76', label: 'A76', width: '100px' },
-  { key: 'A77', label: 'A77', width: '100px' },
-  { key: 'A78', label: 'A78', width: '100px' },
-  { key: 'A2', label: 'A2', width: '100px' },
-  { key: 'A79', label: 'A79', width: '100px' },
-  { key: 'A213', label: 'A213', width: '100px' },
+const columnDefs = [
+  { key: 'A69', fallback: 'Photo 1', width: '60px', isImage: true },
+  { key: 'A70', fallback: 'Asset Code', width: '120px' },
+  { key: 'A7', fallback: 'Level 1', width: '50px' },
+  { key: 'A8', fallback: 'Level 2', width: '150px' },
+  { key: 'A9', fallback: 'Level 3', width: '140px' },
+  { key: 'A66', fallback: 'Subcategory', width: '140px' },
+  { key: 'A67', fallback: 'A67', width: '100px' },
+  { key: 'A222', fallback: 'Description', width: '180px' },
+  { key: 'A68', fallback: 'Condition', width: '120px' },
+  { key: 'A71', fallback: 'Photo 2', width: '60px', isImage: true },
+  { key: 'A72', fallback: 'Photo 3', width: '60px', isImage: true },
+  { key: 'A75', fallback: 'A75', width: '100px' },
+  { key: 'A76', fallback: 'A76', width: '100px' },
+  { key: 'A77', fallback: 'A77', width: '100px' },
+  { key: 'A78', fallback: 'A78', width: '100px' },
+  { key: 'A2', fallback: 'User', width: '140px' },
+  { key: 'A79', fallback: 'Coordinates', width: '60px' },
+  { key: 'A213', fallback: 'A213', width: '100px' },
 ]
+
+// Reactive columns — labels update when language toggles
+const columns = computed(() =>
+  columnDefs.map(def => {
+    const resolved = resolveLang(def.key)
+    return {
+      key: def.key,
+      label: resolved !== def.key ? resolved : def.fallback,
+      width: def.width,
+      isImage: def.isImage,
+    }
+  }),
+)
 
 // Sorting
 const sortBy = ref('A70')
@@ -324,6 +458,19 @@ function statusLabel(status: string) {
     <!-- Toolbar -->
     <Teleport v-if="isMounted" to="#header-toolbar">
       <div class="flex items-center gap-2 w-full justify-end">
+        <!-- Search in header -->
+        <div class="relative max-w-[200px]">
+          <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+          <Input v-model="search" placeholder="Search code, desc..." class="pl-8 h-8 text-xs" />
+          <button
+            v-if="search"
+            class="absolute right-2 top-1/2 -translate-y-1/2 size-4 rounded-full bg-muted-foreground/10 flex items-center justify-center hover:bg-muted-foreground/20 transition-colors"
+            @click="search = ''"
+          >
+            <Icon name="i-lucide-x" class="size-2.5 text-muted-foreground" />
+          </button>
+        </div>
+
         <!-- Total records -->
         <p v-if="!loading && total > 0" class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
           {{ total.toLocaleString() }} records
@@ -572,26 +719,28 @@ function statusLabel(status: string) {
       </div>
     </Transition>
 
-    <!-- Search bar + sync progress -->
-    <div class="shrink-0 border-b px-4 py-2 flex items-center gap-3">
-      <div class="relative max-w-[260px]">
-        <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-        <Input v-model="search" placeholder="Search code, desc..." class="pl-8 h-8 text-sm" />
-        <button
-          v-if="search"
-          class="absolute right-2 top-1/2 -translate-y-1/2 size-4 rounded-full bg-muted-foreground/10 flex items-center justify-center hover:bg-muted-foreground/20 transition-colors"
-          @click="search = ''"
+    <!-- Date filter tabs + sync progress -->
+    <div class="shrink-0 border-b px-4 py-0 flex items-center gap-1 overflow-x-auto">
+      <button
+        v-for="tab in dateTabs" :key="tab.key"
+        class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors"
+        :class="dateFilter === tab.key
+          ? 'border-primary text-primary'
+          : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
+        @click="dateFilter = tab.key"
+      >
+        {{ tab.label }}
+        <span
+          v-if="dateCounts[tab.key] !== undefined"
+          class="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full"
+          :class="dateFilter === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
         >
-          <Icon name="i-lucide-x" class="size-2.5 text-muted-foreground" />
-        </button>
-      </div>
-
-      <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
-        {{ total.toLocaleString() }} record{{ total !== 1 ? 's' : '' }}
-      </p>
+          {{ dateCounts[tab.key]?.toLocaleString() }}
+        </span>
+      </button>
 
       <!-- Sync progress bar -->
-      <div v-if="syncState.active" class="ml-auto flex items-center gap-2.5 min-w-0">
+      <div v-if="syncState.active" class="ml-auto flex items-center gap-2.5 min-w-0 shrink-0">
         <div class="flex items-center gap-1.5">
           <Icon name="i-lucide-loader-2" class="size-3 animate-spin text-blue-500 shrink-0" />
           <span class="text-[10px] text-muted-foreground capitalize whitespace-nowrap">{{ syncState.type }}</span>
@@ -604,9 +753,6 @@ function statusLabel(status: string) {
         </div>
         <span class="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
           {{ syncState.percent }}%
-        </span>
-        <span class="text-[10px] text-muted-foreground/60 hidden xl:block truncate max-w-[200px]">
-          {{ syncState.currentLabel }}
         </span>
       </div>
     </div>
@@ -662,6 +808,27 @@ function statusLabel(status: string) {
               <template v-else-if="col.key === 'A70'">
                 <span class="font-medium font-mono text-xs">{{ row.A70 || '—' }}</span>
               </template>
+              <template v-else-if="col.key === 'A7'">
+                <div class="flex items-center justify-center">
+                  <img
+                    v-if="resolveLevel1Logo(row.A7)"
+                    :src="resolveLevel1Logo(row.A7)"
+                    :alt="row.A7"
+                    class="size-7 rounded-full object-cover ring-1 ring-border/30"
+                    loading="lazy"
+                  >
+                  <span v-else class="text-xs text-muted-foreground">—</span>
+                </div>
+              </template>
+              <template v-else-if="col.key === 'A8'">
+                <span class="text-sm whitespace-nowrap" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveLevel2(row.A8) || '—' }}</span>
+              </template>
+              <template v-else-if="col.key === 'A9'">
+                <span class="text-sm whitespace-nowrap" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveLevel3(row.A9) || '—' }}</span>
+              </template>
+              <template v-else-if="col.key === 'A66'">
+                <span class="text-sm whitespace-nowrap" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ resolveSubCat(row.A66) || '—' }}</span>
+              </template>
               <template v-else-if="col.key === 'A222'">
                 <span dir="rtl" class="text-sm">{{ row.A222 || '—' }}</span>
               </template>
@@ -679,6 +846,25 @@ function statusLabel(status: string) {
                   {{ row.A68 }}
                 </span>
                 <span v-else class="text-sm text-muted-foreground">—</span>
+              </template>
+              <template v-else-if="col.key === 'A2'">
+                <span class="text-sm whitespace-nowrap flex items-center gap-1.5">
+                  <Icon v-if="resolveUser(row.A2) && resolveUser(row.A2) !== row.A2" name="i-lucide-user" class="size-3 text-muted-foreground shrink-0" />
+                  {{ resolveUser(row.A2) || '—' }}
+                </span>
+              </template>
+              <template v-else-if="col.key === 'A79'">
+                <a
+                  v-if="row.A79 && row.A79.includes(',')"
+                  :href="`https://www.google.com/maps?q=${row.A79.replace(/\s/g, '')}`"
+                  target="_blank"
+                  class="inline-flex items-center justify-center size-8 rounded-lg hover:bg-blue-500/10 transition-colors group/map"
+                  title="Open in Google Maps"
+                  @click.stop
+                >
+                  <Icon name="i-lucide-map-pin" class="size-4 text-blue-500 group-hover/map:scale-110 transition-transform" />
+                </a>
+                <span v-else class="text-muted-foreground">—</span>
               </template>
               <template v-else>
                 <span class="text-sm whitespace-nowrap">{{ row[col.key] || '—' }}</span>

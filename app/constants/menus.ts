@@ -11,6 +11,11 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-layout-dashboard',
         link: '/',
       },
+      {
+        title: 'Language',
+        icon: 'i-lucide-languages',
+        link: '/admin/language',
+      },
     ],
   },
   {

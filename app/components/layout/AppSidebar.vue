@@ -57,6 +57,14 @@ const user = computed(() => ({
 }))
 
 const { sidebar } = useAppSettings()
+
+// Language switcher
+const { lang: appLang, setLang, init: initLang } = useAppLanguage()
+initLang()
+
+function setAppLang(l: 'en' | 'ar') {
+  setLang(l)
+}
 </script>
 
 <template>
@@ -73,6 +81,32 @@ const { sidebar } = useAppSettings()
         <component :is="resolveNavItemComponent(item)" v-for="(item, index) in nav.items" :key="index" :item="item" />
       </SidebarGroup>
       <SidebarGroup class="mt-auto">
+        <!-- Language toggle -->
+        <div class="px-3 py-2">
+          <div class="relative flex rounded-lg bg-muted/60 p-1 ring-1 ring-border/40">
+            <!-- Sliding indicator -->
+            <div
+              class="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-card shadow-sm ring-1 ring-border/50 transition-all duration-300 ease-out"
+              :class="appLang === 'ar' ? 'left-[calc(50%+2px)]' : 'left-1'"
+            />
+            <button
+              class="relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all duration-200"
+              :class="appLang === 'en' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70'"
+              @click="setAppLang('en')"
+            >
+              <span class="text-base leading-none">🇬🇧</span>
+              <span>EN</span>
+            </button>
+            <button
+              class="relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all duration-200"
+              :class="appLang === 'ar' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70'"
+              @click="setAppLang('ar')"
+            >
+              <span class="text-base leading-none">🇸🇦</span>
+              <span>AR</span>
+            </button>
+          </div>
+        </div>
         <component :is="resolveNavItemComponent(item)" v-for="(item, index) in navMenuBottom" :key="index" :item="item" size="sm" />
       </SidebarGroup>
     </SidebarContent>

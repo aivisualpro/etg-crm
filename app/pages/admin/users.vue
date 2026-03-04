@@ -23,6 +23,7 @@ init()
 // Based on etgLanguage table: ID → eng
 const columnDefs = [
   { key: 'A2', label: 'User', width: '180px' },
+  { key: 'email', label: 'Email', width: '200px' },
   { key: 'A200', label: 'Role', width: '130px' },
   { key: 'A201', label: 'Phone', width: '140px' },
   { key: 'A203', label: 'Preferred Language', width: '140px' },
@@ -90,7 +91,7 @@ const filteredUsers = computed(() => {
   if (search.value) {
     const q = search.value.toLowerCase()
     result = result.filter((u: any) => {
-      return [u.A2, u.A200, u.A201, u.Status, u.A7, u.A8, u.A9]
+      return [u.A2, u.email, u.A200, u.A201, u.Status, u.A7, u.A8, u.A9]
         .filter(Boolean)
         .some(val => String(val).toLowerCase().includes(q))
     })
@@ -161,6 +162,42 @@ function cellValue(row: any, key: string): string {
   if (val === null || val === undefined || val === '') return '—'
   return String(val)
 }
+// ─── Edit Dialog ────────────────────────────────────────────
+const editDialog = ref(false)
+const editingUser = ref<any>(null)
+const editEmail = ref('')
+const saving = ref(false)
+
+function openEditDialog(user: any) {
+  editingUser.value = user
+  editEmail.value = user.email || ''
+  editDialog.value = true
+}
+
+async function saveEmail() {
+  if (!editingUser.value) return
+  saving.value = true
+  try {
+    await $fetch('/api/bigquery/users/update', {
+      method: 'POST',
+      body: {
+        key: editingUser.value.A2,
+        field: 'email',
+        value: editEmail.value.trim(),
+      },
+    })
+    // Update locally
+    editingUser.value.email = editEmail.value.trim()
+    toast.success(`Email updated for ${editingUser.value.A2}`)
+    editDialog.value = false
+  }
+  catch (e: any) {
+    toast.error(e.data?.statusMessage || 'Failed to update email')
+  }
+  finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
@@ -210,7 +247,8 @@ function cellValue(row: any, key: string): string {
             <TableRow
               v-for="(user, idx) in visibleUsers"
               :key="user.A2 || idx"
-              class="group"
+              class="group cursor-pointer hover:bg-muted/30 transition-colors"
+              @click="openEditDialog(user)"
             >
               <TableCell v-for="col in columnDefs" :key="col.key">
                 <!-- User name with avatar -->
@@ -231,6 +269,21 @@ function cellValue(row: any, key: string): string {
                     {{ user.A200 }}
                   </Badge>
                   <span v-else class="text-muted-foreground">—</span>
+                </template>
+
+                <!-- Email -->
+                <template v-else-if="col.key === 'email'">
+                  <div class="flex items-center gap-1.5">
+                    <Icon v-if="user.email" name="i-lucide-mail" class="size-3 text-muted-foreground shrink-0" />
+                    <span v-if="user.email" class="text-sm">{{ user.email }}</span>
+                    <span v-else class="text-xs text-muted-foreground/50 italic">No email</span>
+                    <button
+                      class="size-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
+                      @click.stop="openEditDialog(user)"
+                    >
+                      <Icon name="i-lucide-pencil" class="size-2.5 text-muted-foreground" />
+                    </button>
+                  </div>
                 </template>
 
                 <!-- Status badge -->
@@ -267,6 +320,68 @@ function cellValue(row: any, key: string): string {
         </Table>
       </div>
     </div>
+
+    <!-- Edit User Email Dialog -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="editDialog && editingUser"
+          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="editDialog = false"
+        >
+          <div class="w-full max-w-md mx-4 rounded-2xl border bg-card shadow-2xl overflow-hidden">
+            <!-- Header -->
+            <div class="px-6 py-5 border-b bg-gradient-to-r from-violet-500/5 to-indigo-500/5">
+              <div class="flex items-center gap-3">
+                <Avatar class="size-10 border">
+                  <AvatarFallback class="text-sm font-medium bg-gradient-to-br from-violet-500/20 to-indigo-500/20 text-violet-700 dark:text-violet-300">
+                    {{ getInitials(editingUser.A2) }}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 class="font-semibold text-foreground">{{ editingUser.A2 }}</h3>
+                  <p class="text-xs text-muted-foreground">{{ editingUser.A200 || 'User' }} · {{ editingUser.A201 || '—' }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Body -->
+            <div class="px-6 py-5 space-y-4">
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <Icon name="i-lucide-mail" class="size-3" />
+                  Email Address
+                </label>
+                <Input
+                  v-model="editEmail"
+                  type="email"
+                  placeholder="user@example.com"
+                  class="h-9"
+                  @keydown.enter="saveEmail"
+                />
+                <p class="text-[10px] text-muted-foreground mt-1.5">This email is used for Google authentication login.</p>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t flex justify-end gap-2">
+              <Button variant="outline" size="sm" @click="editDialog = false">Cancel</Button>
+              <Button size="sm" :disabled="saving" @click="saveEmail">
+                <Icon v-if="saving" name="i-lucide-loader-2" class="size-3.5 animate-spin mr-1" />
+                {{ saving ? 'Saving...' : 'Save Email' }}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </AdminLayout>
 </template>
 

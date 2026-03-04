@@ -8,7 +8,7 @@ export default defineEventHandler(async () => {
             queryBigQuery('SELECT * FROM `flutter-5e2fd.etg_database.etgLevel1` ORDER BY eng'),
             queryBigQuery('SELECT * FROM `flutter-5e2fd.etg_database.etgLevel2` ORDER BY eng'),
             queryBigQuery('SELECT * FROM `flutter-5e2fd.etg_database.etgLevel3` ORDER BY eng'),
-            queryBigQuery<{ ID: string, eng: string }>('SELECT ID, eng FROM `flutter-5e2fd.etg_database.etgLanguage`'),
+            queryBigQuery<{ ID: string, eng: string, arabic: string }>('SELECT ID, eng, arabic FROM `flutter-5e2fd.etg_database.etgLanguage`'),
         ])
 
         // Build language lookup

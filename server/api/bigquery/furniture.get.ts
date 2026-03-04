@@ -44,12 +44,24 @@ export default defineEventHandler(async (event) => {
             params.a9 = a9
         }
 
+        const dateFilter = (query.dateFilter as string || '').trim()
+
         if (search) {
             conditions.push('(LOWER(ID) LIKE @search OR LOWER(A70) LIKE @search OR LOWER(A222) LIKE @search OR LOWER(A68) LIKE @search)')
             params.search = `%${search.toLowerCase()}%`
         }
 
+        // Date filter on A213 (format: M/D/YYYY HH:mm:ss)
+        if (dateFilter && dateFilter !== 'all') {
+            const dateCond = buildDateCondition(dateFilter)
+            if (dateCond) conditions.push(dateCond)
+        }
+
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+        // Build base WHERE without date filter for date counts
+        const baseConds = conditions.filter(c => !c.includes('PARSE_TIMESTAMP'))
+        const baseWhere = baseConds.length > 0 ? `WHERE ${baseConds.join(' AND ')}` : ''
 
         // Get total count
         const countSQL = `SELECT COUNT(*) as total FROM ${table} ${whereClause}`
@@ -67,12 +79,46 @@ export default defineEventHandler(async (event) => {
         // Get partition counts (for tab badges)
         let partitionCounts: Record<string, number> = {}
         if (!a7) {
-            // Only fetch counts when showing all tabs
             const countsSQL = `SELECT A7, COUNT(*) as cnt FROM ${table} GROUP BY A7 ORDER BY cnt DESC`
             const [countRows] = await useBigQuery().query({ query: countsSQL, location: 'US' })
             for (const r of countRows) {
                 partitionCounts[r.A7 as string] = Number(r.cnt)
             }
+        }
+
+        // Date counts — count rows per date range in a single query
+        let dateCounts: Record<string, number> = {}
+        try {
+            const dateCountSQL = `
+                WITH parsed AS (
+                    SELECT SAFE.PARSE_TIMESTAMP('%m/%d/%Y %H:%M:%S', A213) AS ts
+                    FROM ${table} ${baseWhere}
+                )
+                SELECT
+                    COUNT(*) as total,
+                    COUNTIF(ts >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY)) as today,
+                    COUNTIF(ts >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), ISOWEEK)) as week,
+                    COUNTIF(ts >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH)) as month,
+                    COUNTIF(CAST(ts AS DATE) >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH)
+                        AND CAST(ts AS DATE) < DATE_TRUNC(CURRENT_DATE(), MONTH)) as lastMonth,
+                    COUNTIF(ts >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), YEAR)) as year
+                FROM parsed
+            `
+            const [dcResult] = await useBigQuery().query({ query: dateCountSQL, params, location: 'US' })
+            if (dcResult?.[0]) {
+                const r = dcResult[0]
+                dateCounts = {
+                    all: Number(r.total || 0),
+                    today: Number(r.today || 0),
+                    week: Number(r.week || 0),
+                    month: Number(r.month || 0),
+                    lastMonth: Number(r.lastMonth || 0),
+                    year: Number(r.year || 0),
+                }
+            }
+        }
+        catch (e) {
+            console.error('Date counts query failed:', e instanceof Error ? e.message : e)
         }
 
         return {
@@ -83,14 +129,35 @@ export default defineEventHandler(async (event) => {
             limit,
             totalPages: Math.ceil(total / limit),
             partitionCounts,
+            dateCounts,
         }
     }
     catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
-        // If table doesn't exist yet, return empty
         if (message.includes('Not found')) {
-            return { success: true, rows: [], total: 0, page: 1, limit: 100, totalPages: 0, partitionCounts: {} }
+            return { success: true, rows: [], total: 0, page: 1, limit: 100, totalPages: 0, partitionCounts: {}, dateCounts: {} }
         }
         throw createError({ statusCode: 500, statusMessage: `Failed to fetch furniture: ${message}` })
     }
 })
+
+/**
+ * Build a date filter condition for A213 (timestamp string in M/D/YYYY HH:mm:ss format)
+ */
+function buildDateCondition(filter: string): string | null {
+    const ts = `SAFE.PARSE_TIMESTAMP('%m/%d/%Y %H:%M:%S', A213)`
+    switch (filter) {
+        case 'today':
+            return `${ts} >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY)`
+        case 'week':
+            return `${ts} >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), ISOWEEK)`
+        case 'month':
+            return `${ts} >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH)`
+        case 'lastMonth':
+            return `CAST(${ts} AS DATE) >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH) AND CAST(${ts} AS DATE) < DATE_TRUNC(CURRENT_DATE(), MONTH)`
+        case 'year':
+            return `${ts} >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), YEAR)`
+        default:
+            return null
+    }
+}

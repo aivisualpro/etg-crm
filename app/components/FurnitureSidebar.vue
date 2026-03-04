@@ -17,14 +17,17 @@ const { data: treeData } = await useFetch<{
   tree: Record<string, TreeNode>
 }>('/api/bigquery/furniture-tree')
 
-// Fetch level1 labels
-const level1Map = ref<Record<string, string>>({})
+// App language for label resolution
+const { lang, resolve: resolveLang } = useAppLanguage()
+
+// Fetch level1 labels (both eng + arabic)
+const level1Labels = ref<Record<string, { eng: string, arabic: string }>>({})
 async function fetchLevel1() {
   try {
     const data = await $fetch<{ success: boolean, level1: any[] }>('/api/bigquery/levels')
     if (data.success && data.level1) {
       for (const r of data.level1) {
-        if (r.A7) level1Map.value[r.A7] = r.eng || r.arabic || r.A7
+        if (r.A7) level1Labels.value[r.A7] = { eng: r.eng || r.A7, arabic: r.arabic || r.A7 }
       }
     }
   }
@@ -33,7 +36,12 @@ async function fetchLevel1() {
 fetchLevel1()
 
 function getLabel(key: string): string {
-  return level1Map.value[key] || key
+  const entry = level1Labels.value[key]
+  if (entry) {
+    return lang.value === 'ar' ? (entry.arabic || entry.eng || key) : (entry.eng || key)
+  }
+  // Fallback to language map
+  return resolveLang(key)
 }
 
 const total = computed(() => treeData.value?.total || 0)
@@ -71,7 +79,7 @@ function toggleA8(key: string) {
 </script>
 
 <template>
-  <div class="w-56 shrink-0 border-r bg-card/50 overflow-y-auto flex flex-col">
+  <div class="w-74 shrink-0 border-r bg-card/50 overflow-y-auto flex flex-col" :dir="lang === 'ar' ? 'rtl' : 'ltr'">
     <!-- Header -->
     <div class="px-3 py-3 border-b">
       <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Furniture</h3>
