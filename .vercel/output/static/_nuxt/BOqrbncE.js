@@ -1,1 +1,0 @@
-import{d as t,p as s,e as l,w as u,v as o,ae as n,af as p,h as d,P as i}from"./Cq26USZo.js";var _=t({__name:"MenuLabel",props:{asChild:{type:Boolean,required:!1},as:{type:null,required:!1,default:"div"}},setup(e){const a=e;return(r,f)=>(l(),s(d(i),n(p(a)),{default:u(()=>[o(r.$slots,"default")]),_:3},16))}}),v=_;export{v as M};

@@ -1,1 +1,0 @@
-import{d as t,p as o,e as s,w as p,v as n,N as u,h as l,P as i}from"./Cq26USZo.js";var _=t({__name:"MenuSeparator",props:{asChild:{type:Boolean,required:!1},as:{type:null,required:!1}},setup(e){const a=e;return(r,d)=>(s(),o(l(i),u(a,{role:"separator","aria-orientation":"horizontal"}),{default:p(()=>[n(r.$slots,"default")]),_:3},16))}}),c=_;export{c as M};

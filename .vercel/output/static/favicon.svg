@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <!-- ETG Diamond Logo -->
-  <!-- Top chevron -->
-  <polygon points="256,32 448,224 352,224 256,128 160,224 64,224" fill="#E5A620"/>
-  <!-- Bottom chevron -->
-  <polygon points="256,480 64,288 160,288 256,384 352,288 448,288" fill="#E5A620"/>
-</svg>
