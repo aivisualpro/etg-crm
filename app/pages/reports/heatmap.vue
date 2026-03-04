@@ -176,8 +176,14 @@ function clusterPoints(points: GeoPoint[], gridSize: number): Cluster[] {
 const mapContainer = ref<HTMLDivElement | null>(null)
 let map: any = null
 let clusterLayer: any = null
+let tileLayer: any = null
 const mapReady = ref(false)
 const mapMode = ref<'clusters' | 'heat'>('clusters')
+const colorMode = useColorMode()
+const isDark = computed(() => colorMode.value === 'dark')
+
+const TILE_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
 
 function condColor(cond: string): string {
   const c = (cond || '').toLowerCase()
@@ -225,7 +231,7 @@ function renderClusters() {
         fillColor: color,
         fillOpacity: cl.count === 1 ? 0.9 : 0.6,
         stroke: true,
-        color: 'rgba(255,255,255,0.5)',
+        color: isDark.value ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.2)',
         weight: cl.count === 1 ? 1 : 2,
       })
 
@@ -259,7 +265,7 @@ function renderClusters() {
         const labelSize = radius * 2
         const label = L.marker([cl.lat, cl.lng], {
           icon: L.divIcon({
-            html: `<div style="display:flex;align-items:center;justify-content:center;width:${labelSize}px;height:${labelSize}px;font-size:${Math.max(9, Math.min(13, radius * 0.5))}px;font-weight:700;color:white;text-shadow:0 1px 3px rgba(0,0,0,.5);pointer-events:none">${cl.count > 999 ? Math.round(cl.count / 1000) + 'k' : cl.count}</div>`,
+            html: `<div style="display:flex;align-items:center;justify-content:center;width:${labelSize}px;height:${labelSize}px;font-size:${Math.max(9, Math.min(13, radius * 0.5))}px;font-weight:700;color:${isDark.value ? 'white' : '#1e293b'};text-shadow:${isDark.value ? '0 1px 3px rgba(0,0,0,.5)' : '0 1px 2px rgba(255,255,255,.8)'};pointer-events:none">${cl.count > 999 ? Math.round(cl.count / 1000) + 'k' : cl.count}</div>`,
             className: 'cluster-label',
             iconSize: [labelSize, labelSize],
             iconAnchor: [labelSize / 2, labelSize / 2],
@@ -291,6 +297,16 @@ function renderClusters() {
   clusterLayer.addTo(map)
 }
 
+function swapTiles() {
+  if (!map) return
+  const L = (window as any).L
+  if (tileLayer) map.removeLayer(tileLayer)
+  tileLayer = L.tileLayer(isDark.value ? TILE_DARK : TILE_LIGHT, {
+    maxZoom: 19,
+    subdomains: 'abcd',
+  }).addTo(map)
+}
+
 async function initMap() {
   if (!mapContainer.value) return
   const L = await import('leaflet')
@@ -301,13 +317,11 @@ async function initMap() {
     zoom: 6,
     zoomControl: false,
     attributionControl: false,
-    preferCanvas: true, // Canvas renderer for performance
+    preferCanvas: true,
   })
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19,
-    subdomains: 'abcd',
-  }).addTo(map)
+  // Add tile layer based on current mode
+  swapTiles()
 
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.control.attribution({ position: 'bottomleft', prefix: false })
@@ -338,6 +352,12 @@ watch([geoPoints, mapMode], () => {
   if (renderTimeout) clearTimeout(renderTimeout)
   renderTimeout = setTimeout(() => { fitAndRender() }, 200)
 }, { deep: true })
+
+// Watch color mode — swap tiles + re-render clusters (text colors change)
+watch(isDark, () => {
+  swapTiles()
+  renderClusters()
+})
 
 onMounted(async () => {
   isMounted.value = true
@@ -500,15 +520,17 @@ const filterSections = computed(() => [
 </template>
 
 <style>
-.map-popup-dark .leaflet-popup-content-wrapper { background: hsl(222.2 84% 4.9%); color: hsl(210 40% 98%); border-radius: 12px; border: 1px solid hsl(217.2 32.6% 17.5%); box-shadow: 0 20px 40px rgba(0,0,0,.4); }
-.map-popup-dark .leaflet-popup-tip { background: hsl(222.2 84% 4.9%); border: 1px solid hsl(217.2 32.6% 17.5%); }
-.map-popup-dark .leaflet-popup-close-button { color: hsl(215 20.2% 65.1%); font-size: 18px; padding: 6px 8px; }
-.map-popup-dark .leaflet-popup-close-button:hover { color: hsl(210 40% 98%); }
-.cluster-label { background: none !important; border: none !important; }
-:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper { background: white; color: #0f172a; border-color: #e2e8f0; }
-:root:not(.dark) .map-popup-dark .leaflet-popup-tip { background: white; border-color: #e2e8f0; }
-:root:not(.dark) .map-popup-dark .leaflet-popup-close-button { color: #64748b; }
+/* Dark mode popups */
+.dark .map-popup-dark .leaflet-popup-content-wrapper { background: hsl(222.2 84% 4.9%); color: hsl(210 40% 98%); border-radius: 12px; border: 1px solid hsl(217.2 32.6% 17.5%); box-shadow: 0 20px 40px rgba(0,0,0,.4); }
+.dark .map-popup-dark .leaflet-popup-tip { background: hsl(222.2 84% 4.9%); border: 1px solid hsl(217.2 32.6% 17.5%); }
+.dark .map-popup-dark .leaflet-popup-close-button { color: hsl(215 20.2% 65.1%); font-size: 18px; padding: 6px 8px; }
+.dark .map-popup-dark .leaflet-popup-close-button:hover { color: hsl(210 40% 98%); }
+/* Light mode popups */
+:root:not(.dark) .map-popup-dark .leaflet-popup-content-wrapper { background: white; color: #0f172a; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+:root:not(.dark) .map-popup-dark .leaflet-popup-tip { background: white; border: 1px solid #e2e8f0; }
+:root:not(.dark) .map-popup-dark .leaflet-popup-close-button { color: #64748b; font-size: 18px; padding: 6px 8px; }
 :root:not(.dark) .map-popup-dark .leaflet-popup-close-button:hover { color: #0f172a; }
+.cluster-label { background: none !important; border: none !important; }
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
