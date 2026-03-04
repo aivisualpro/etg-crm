@@ -62,7 +62,7 @@ const user = computed(() => ({
   name: authUser.value?.name || 'User',
   email: authUser.value?.email || '',
   role: userRole.value,
-  avatar: authUser.value?.picture || '/avatars/default.png',
+  avatar: authUser.value?.picture || '',
 }))
 
 const { sidebar } = useAppSettings()

@@ -58,18 +58,35 @@ useSeoMeta({
       <!-- Left panel — branding -->
       <div class="login-brand">
         <div class="login-brand__inner">
-          <div class="login-brand__logo">
-            <img src="/logo-192.png" alt="ETG CRM" class="size-12 rounded-xl shadow-lg" />
-            <div>
-              <h2 class="text-xl font-bold text-white tracking-tight">ETG CRM</h2>
-              <p class="text-sm text-white/60">Enterprise CRM Platform</p>
+          <!-- Centered hero logo -->
+          <div class="login-brand__hero">
+            <div class="login-logo-sun">
+              <!-- Sun rays -->
+              <div class="sun-rays">
+                <div v-for="i in 12" :key="i" class="sun-ray" :style="{ '--ray-index': i }" />
+              </div>
+              <!-- Glow halo -->
+              <div class="sun-halo" />
+              <div class="sun-halo sun-halo--outer" />
+              <!-- Floating particles -->
+              <div class="sun-particles">
+                <div v-for="i in 6" :key="i" class="sun-particle" :style="{ '--p-index': i }" />
+              </div>
+              <!-- Logo -->
+              <div class="sun-logo-ring">
+                <img src="/logo-192.png" alt="ETG CRM" class="sun-logo-img" />
+              </div>
+            </div>
+            <div class="login-brand__title">
+              <h2>ETG CRM</h2>
+              <p>Enterprise CRM Platform</p>
             </div>
           </div>
 
           <div class="login-brand__quote">
             <blockquote class="space-y-3">
               <p class="text-lg leading-relaxed text-white/80 italic">
-                &ldquo;A comprehensive platform that streamlines every aspect of our business — from CRM to inventory to finance, all in one place.&rdquo;
+                &ldquo;A comprehensive platform that streamlines every aspect of our business all in one place.&rdquo;
               </p>
               <footer class="text-sm text-white/50 font-medium">
                 — ETG Management Team
@@ -264,18 +281,167 @@ useSeoMeta({
   z-index: 10;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  align-items: center;
   height: 100%;
+  gap: 3rem;
 }
 
-.login-brand__logo {
+.login-brand__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* ── Sun-shine logo ── */
+.login-logo-sun {
+  position: relative;
+  width: 180px;
+  height: 180px;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: center;
+}
+
+/* Rotating rays */
+.sun-rays {
+  position: absolute;
+  inset: 0;
+  animation: sun-spin 20s linear infinite;
+}
+
+.sun-ray {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 90px;
+  transform-origin: 50% 0;
+  transform: rotate(calc(var(--ray-index) * 30deg));
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 215, 100, 0.35) 40%,
+    rgba(255, 180, 50, 0.12) 80%,
+    transparent 100%
+  );
+  border-radius: 2px;
+  opacity: 0.8;
+  animation: ray-pulse 3s ease-in-out infinite;
+  animation-delay: calc(var(--ray-index) * 0.15s);
+}
+
+/* Halo glow */
+.sun-halo {
+  position: absolute;
+  inset: 15px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 200, 80, 0.25) 0%,
+    rgba(255, 180, 50, 0.08) 50%,
+    transparent 70%
+  );
+  animation: halo-pulse 4s ease-in-out infinite;
+}
+
+.sun-halo--outer {
+  inset: -10px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 200, 80, 0.08) 0%,
+    rgba(255, 180, 50, 0.03) 40%,
+    transparent 65%
+  );
+  animation-delay: 1s;
+  animation-duration: 5s;
+}
+
+/* Floating particles */
+.sun-particles {
+  position: absolute;
+  inset: 0;
+}
+
+.sun-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 220, 120, 0.7);
+  box-shadow: 0 0 6px 2px rgba(255, 200, 80, 0.4);
+  animation: particle-float 6s ease-in-out infinite;
+  animation-delay: calc(var(--p-index) * 0.8s);
+}
+
+.sun-particle:nth-child(1) { top: 10%; left: 50%; }
+.sun-particle:nth-child(2) { top: 30%; left: 85%; }
+.sun-particle:nth-child(3) { top: 70%; left: 90%; }
+.sun-particle:nth-child(4) { top: 88%; left: 55%; }
+.sun-particle:nth-child(5) { top: 65%; left: 10%; }
+.sun-particle:nth-child(6) { top: 25%; left: 12%; }
+
+/* Logo ring */
+.sun-logo-ring {
+  position: relative;
+  z-index: 10;
+  width: 88px;
+  height: 88px;
+  border-radius: 1.25rem;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--shine-angle, 0deg),
+    rgba(255, 220, 120, 0.15),
+    rgba(255, 200, 80, 0.6),
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 200, 80, 0.6),
+    rgba(255, 220, 120, 0.15)
+  );
+  animation: shine-rotate 3s linear infinite;
+  box-shadow:
+    0 0 30px rgba(255, 200, 80, 0.25),
+    0 0 60px rgba(255, 180, 50, 0.1);
+}
+
+.sun-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 1rem;
+  background: oklch(0.12 0.02 260);
+}
+
+.dark .sun-logo-img {
+  background: oklch(0.08 0.02 260);
+}
+
+/* Brand title */
+.login-brand__title {
+  text-align: center;
+}
+
+.login-brand__title h2 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-shadow: 0 2px 20px rgba(255, 200, 80, 0.15);
+}
+
+.login-brand__title p {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.5rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .login-brand__quote {
   max-width: 420px;
+  text-align: center;
 }
 
 .login-brand__grid {
@@ -287,6 +453,52 @@ useSeoMeta({
     linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px);
   background-size: 60px 60px;
+}
+
+/* ── Keyframes ── */
+@keyframes sun-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ray-pulse {
+  0%, 100% { opacity: 0.5; height: 80px; }
+  50% { opacity: 1; height: 95px; }
+}
+
+@keyframes halo-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+
+@keyframes particle-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.5;
+  }
+  25% {
+    transform: translate(6px, -10px) scale(1.3);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-4px, -16px) scale(0.8);
+    opacity: 0.3;
+  }
+  75% {
+    transform: translate(-8px, -6px) scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+@keyframes shine-rotate {
+  from { --shine-angle: 0deg; }
+  to { --shine-angle: 360deg; }
+}
+
+@property --shine-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
 }
 
 /* Right form panel */

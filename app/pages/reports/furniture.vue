@@ -439,11 +439,14 @@ function condColor(c: string) {
 
               <!-- Template list -->
               <div v-else class="max-h-[240px] overflow-y-auto">
-                <button
+                <div
                   v-for="t in savedTemplates"
                   :key="t.id"
-                  class="group w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/30 last:border-b-0"
+                  role="button"
+                  tabindex="0"
+                  class="group w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/30 last:border-b-0 cursor-pointer"
                   @click.stop="applyTemplate(t)"
+                  @keydown.enter.stop="applyTemplate(t)"
                 >
                   <div class="flex items-center justify-center size-7 rounded-lg bg-primary/10 shrink-0">
                     <Icon name="i-lucide-bookmark" class="size-3.5 text-primary" />
@@ -461,7 +464,7 @@ function condColor(c: string) {
                   >
                     <Icon name="i-lucide-trash-2" class="size-3 text-destructive" />
                   </button>
-                </button>
+                </div>
               </div>
             </div>
           </Transition>
