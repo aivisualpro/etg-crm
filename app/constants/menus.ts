@@ -59,6 +59,11 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-trophy',
         link: '/reports/employee-performance',
       },
+      {
+        title: 'Asset Map',
+        icon: 'i-lucide-map',
+        link: '/reports/heatmap',
+      },
     ],
   },
 ]
