@@ -75,32 +75,97 @@ export default defineEventHandler(async () => {
                     console.warn(`  ⚠️ ${imageDriveFolder} folder not found in Drive`)
                 }
 
-                let driveFiles: Array<{ id: string, name: string, mimeType: string }> = []
+                // Index ALL files in the images folder (top-level + subfolders)
+                const driveFileMap = new Map<string, { id: string, name: string, mimeType: string }>()
+                const subfolderMap = new Map<string, string>() // subfolder name → subfolder id
+
                 if (imagesFolderId) {
-                    const filesRes = await drive.files.list({
+                    // Get top-level items (files + folders)
+                    const topRes = await drive.files.list({
                         q: `'${imagesFolderId}' in parents`,
                         pageSize: 1000,
                         fields: 'files(id, name, mimeType)',
                         supportsAllDrives: true,
                         includeItemsFromAllDrives: true,
                     })
-                    driveFiles = (filesRes.data.files || []) as typeof driveFiles
-                    console.log(`  📂 Found ${driveFiles.length} files in ${imageDriveFolder}`)
+                    const topItems = (topRes.data.files || []) as Array<{ id: string, name: string, mimeType: string }>
+
+                    for (const item of topItems) {
+                        if (item.mimeType === 'application/vnd.google-apps.folder') {
+                            // Track subfolders (may be named by entity ID like A7 value)
+                            subfolderMap.set(item.name.toLowerCase(), item.id)
+                        }
+                        else {
+                            driveFileMap.set(item.name, item)
+                            // Also index by name without extension for flexible matching
+                            const nameNoExt = item.name.replace(/\.[^.]+$/, '')
+                            if (!driveFileMap.has(nameNoExt)) {
+                                driveFileMap.set(`__noext__${nameNoExt.toLowerCase()}`, item)
+                            }
+                        }
+                    }
+
+                    // Index files inside subfolders (AppSheet often stores images in entity-named subfolders)
+                    for (const [subName, subId] of subfolderMap) {
+                        const subRes = await drive.files.list({
+                            q: `'${subId}' in parents`,
+                            pageSize: 100,
+                            fields: 'files(id, name, mimeType)',
+                            supportsAllDrives: true,
+                            includeItemsFromAllDrives: true,
+                        })
+                        for (const f of (subRes.data.files || []) as Array<{ id: string, name: string, mimeType: string }>) {
+                            if (f.mimeType !== 'application/vnd.google-apps.folder') {
+                                // Index as "subfolder/filename" for path-based matching
+                                driveFileMap.set(`${subName}/${f.name.toLowerCase()}`, f)
+                                // Also index as just the subfolder key (for matching by entity ID)
+                                if (!driveFileMap.has(`__sub__${subName}`)) {
+                                    driveFileMap.set(`__sub__${subName}`, f)
+                                }
+                            }
+                        }
+                    }
+
+                    console.log(`  📂 Indexed ${driveFileMap.size} files (+ ${subfolderMap.size} subfolders) in ${imageDriveFolder}`)
                 }
 
                 for (const row of rows) {
                     const imgPath = row[imageColumn]
-                    if (!imgPath || typeof imgPath !== 'string' || !imgPath.trim()) continue
-
                     const entityId = row[keyColumn]
                     if (!entityId) continue
 
-                    const imgFileName = imgPath.split('/').pop()
-                    if (!imgFileName) continue
+                    // Strategy 1: Match by the exact filename from the logo/image column
+                    let driveFile: { id: string, name: string, mimeType: string } | undefined
+                    if (imgPath && typeof imgPath === 'string' && imgPath.trim()) {
+                        const imgFileName = imgPath.split('/').pop() || ''
+                        if (imgFileName) {
+                            // Try exact match
+                            driveFile = driveFileMap.get(imgFileName)
+                            // Try path-based match (subfolder/filename)
+                            if (!driveFile) {
+                                const pathParts = imgPath.split('/')
+                                if (pathParts.length >= 2) {
+                                    const subPath = pathParts.slice(-2).join('/').toLowerCase()
+                                    driveFile = driveFileMap.get(subPath)
+                                }
+                            }
+                        }
+                    }
 
-                    const driveFile = driveFiles.find(f => f.name === imgFileName)
+                    // Strategy 2: Match by entity key ID as filename (e.g. "A7_value.png")
+                    if (!driveFile && entityId) {
+                        driveFile = driveFileMap.get(`__noext__${entityId.toLowerCase()}`)
+                    }
+
+                    // Strategy 3: Look for a subfolder named after the entity ID
+                    if (!driveFile && entityId) {
+                        driveFile = driveFileMap.get(`__sub__${entityId.toLowerCase()}`)
+                    }
+
                     if (!driveFile) {
-                        console.warn(`  ⚠️ Image not found in Drive: ${imgFileName} (${row.eng || entityId})`)
+                        if (imgPath) {
+                            console.warn(`  ⚠️ Image not found in Drive: ${imgPath} (entity: ${row.eng || entityId})`)
+                        }
                         continue
                     }
 
@@ -112,13 +177,13 @@ export default defineEventHandler(async () => {
                         const imgBuffer = new Uint8Array(downloadRes.data as ArrayBuffer)
 
                         if (imgBuffer.length > 0) {
-                            const ext = imgFileName.split('.').pop() || 'png'
+                            const ext = (driveFile.name.split('.').pop() || 'png').toLowerCase()
                             const contentType = driveFile.mimeType || (ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`)
                             const gcsPath = `images/${bqTable}/${entityId}/image.${ext}`
 
                             await uploadToGCS(GCS_BUCKET, gcsPath, imgBuffer, contentType)
                             row.image_url = gcsPath
-                            console.log(`  ✅ Image: ${row.eng || entityId} → ${gcsPath}`)
+                            console.log(`  ✅ Image: ${row.eng || entityId} → ${gcsPath} (from: ${driveFile.name})`)
                         }
                     }
                     catch (e: any) {

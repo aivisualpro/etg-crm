@@ -7,25 +7,97 @@ setHeader({ title: 'Entities', icon: 'i-lucide-building-2', description: 'Manage
 const isMounted = ref(false)
 onMounted(() => { isMounted.value = true })
 
-// ─── State ──────────────────────────────────────────────────
-const activeTab = ref('level1')
-const search = ref('')
-const syncing = ref(false)
-const level1 = ref<any[]>([])
-const level2 = ref<any[]>([])
-const level3 = ref<any[]>([])
+const { resolve: resolveLang, lang: appLang } = useAppLanguage()
 
 // ─── Global prefetched store (instant) ──────────────────────
 const store = useDashboardStore()
 store.init()
 
-// Populate from store immediately
 const loading = computed(() => !store.ready.value)
+const level1 = computed(() => [...store.level1List.value])
+const level2 = computed(() => [...store.level2List.value])
+const level3 = computed(() => [...store.level3List.value])
+
+// ─── State ──────────────────────────────────────────────────
+const selectedLevel1Id = ref('')
+const search = ref('')
+const syncing = ref(false)
+const expandedLevel2 = ref<Set<string>>(new Set())
+
+/** Resolve name based on current app language */
+function lang(row: any): string {
+  if (!row) return ''
+  return appLang.value === 'ar' ? (row.arabic || row.eng || '') : (row.eng || row.arabic || '')
+}
+
+// ─── Auto-select first level1 ───────────────────────────────
 watchEffect(() => {
-  level1.value = [...store.level1List.value]
-  level2.value = [...store.level2List.value]
-  level3.value = [...store.level3List.value]
+  if (level1.value.length && !selectedLevel1Id.value) {
+    selectedLevel1Id.value = level1.value[0].A7
+  }
 })
+
+// ─── Level 2s for the selected Level 1 ─────────────────────
+const filteredLevel2 = computed(() => {
+  if (!selectedLevel1Id.value) return []
+  return level2.value.filter(l2 => l2.A7 === selectedLevel1Id.value)
+})
+
+// Reset expanded accordion when Level 1 changes
+watch(selectedLevel1Id, () => {
+  expandedLevel2.value = new Set()
+})
+
+// ─── Level 3s grouped by Level 2 ───────────────────────────
+const level3ByLevel2 = computed(() => {
+  const map: Record<string, any[]> = {}
+  for (const l3 of level3.value) {
+    if (!map[l3.A8]) map[l3.A8] = []
+    map[l3.A8]!.push(l3)
+  }
+  return map
+})
+
+function level3ForLevel2(l2Id: string): any[] {
+  return level3ByLevel2.value[l2Id] || []
+}
+
+// ─── Counts ────────────────────────────────────────────────
+function level2CountForLevel1(l1Id: string): number {
+  return level2.value.filter(l2 => l2.A7 === l1Id).length
+}
+
+function level3CountForLevel2(l2Id: string): number {
+  return (level3ByLevel2.value[l2Id] || []).length
+}
+
+function totalLevel2ForSelectedLevel1(): number {
+  if (!selectedLevel1Id.value) return 0
+  return filteredLevel2.value.length
+}
+
+// ─── Search / Filter ───────────────────────────────────────
+const searchedLevel2 = computed(() => {
+  const q = search.value.toLowerCase()
+  if (!q) return filteredLevel2.value
+  return filteredLevel2.value.filter(l2 =>
+    (l2.eng || '').toLowerCase().includes(q)
+    || (l2.arabic || '').toLowerCase().includes(q)
+    || (l2.A8 || '').toLowerCase().includes(q),
+  )
+})
+
+// ─── Accordion Toggle ──────────────────────────────────────
+function toggleLevel2(l2Id: string) {
+  const newSet = new Set(expandedLevel2.value)
+  if (newSet.has(l2Id)) newSet.delete(l2Id)
+  else newSet.add(l2Id)
+  expandedLevel2.value = newSet
+}
+
+function isExpanded(l2Id: string): boolean {
+  return expandedLevel2.value.has(l2Id)
+}
 
 // ─── Sync from AppSheet ─────────────────────────────────────
 async function syncLevels() {
@@ -43,132 +115,8 @@ async function syncLevels() {
   }
 }
 
-// ─── Tabs ───────────────────────────────────────────────────
-const tabs = computed(() => [
-  { key: 'level1', label: 'Level 1', count: level1.value.length, icon: 'i-lucide-map-pin' },
-  { key: 'level2', label: 'Level 2', count: level2.value.length, icon: 'i-lucide-building' },
-  { key: 'level3', label: 'Level 3', count: level3.value.length, icon: 'i-lucide-map' },
-])
-
-// ─── Column definitions per tab ─────────────────────────────
-const level1Columns = [
-  { key: 'logo', label: 'Logo', width: '60px' },
-  { key: 'eng', label: 'Name (English)', width: '200px' },
-  { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
-  { key: 'A276', label: 'Verified', width: '100px' },
-  { key: 'A15', label: 'Activity Report', width: '120px' },
-  { key: 'Related_level2s', label: 'Related Level 2', width: '200px' },
-]
-
-const level2Columns = [
-  { key: 'eng', label: 'Name (English)', width: '200px' },
-  { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
-  { key: 'A7', label: 'Level 1', width: '160px' },
-  { key: 'Manager_Name', label: 'Manager', width: '160px' },
-  { key: 'A276', label: 'Verified', width: '100px' },
-  { key: 'Related_Level3s', label: 'Related Level 3', width: '200px' },
-]
-
-const level3Columns = [
-  { key: 'eng', label: 'Name (English)', width: '200px' },
-  { key: 'arabic', label: 'Name (Arabic)', width: '200px' },
-  { key: 'A7', label: 'Level 1', width: '160px' },
-  { key: 'A8', label: 'Level 2', width: '160px' },
-  { key: 'A276', label: 'Verified', width: '100px' },
-  { key: 'Counts', label: 'Asset Counts', width: '220px' },
-]
-
-const currentColumns = computed(() => {
-  if (activeTab.value === 'level1') return level1Columns
-  if (activeTab.value === 'level2') return level2Columns
-  return level3Columns
-})
-
-const currentData = computed(() => {
-  if (activeTab.value === 'level1') return level1.value
-  if (activeTab.value === 'level2') return level2.value
-  return level3.value
-})
-
-// ─── Sorting ────────────────────────────────────────────────
-const sortBy = ref('eng')
-const sortDir = ref<'asc' | 'desc'>('asc')
-
-function toggleSort(col: string) {
-  if (sortBy.value === col) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  else { sortBy.value = col; sortDir.value = 'asc' }
-}
-
-function sortIcon(col: string) {
-  if (sortBy.value !== col) return 'i-lucide-chevrons-up-down'
-  return sortDir.value === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
-}
-
-// ─── Filtered & sorted ─────────────────────────────────────
-const CHUNK_SIZE = 50
-const visibleCount = ref(CHUNK_SIZE)
-
-watch([activeTab, search], () => { visibleCount.value = CHUNK_SIZE })
-
-const filteredRows = computed(() => {
-  let rows = currentData.value
-  if (search.value) {
-    const q = search.value.toLowerCase()
-    rows = rows.filter((r: any) =>
-      Object.values(r).some(v => v && String(v).toLowerCase().includes(q)),
-    )
-  }
-  return rows
-})
-
-const sortedRows = computed(() => {
-  const arr = [...filteredRows.value]
-  const col = sortBy.value
-  return arr.sort((a, b) => {
-    const av = String(a[col] ?? '').toLowerCase()
-    const bv = String(b[col] ?? '').toLowerCase()
-    const cmp = av.localeCompare(bv)
-    return sortDir.value === 'asc' ? cmp : -cmp
-  })
-})
-
-const visibleRows = computed(() => sortedRows.value.slice(0, visibleCount.value))
-const hasMore = computed(() => visibleCount.value < sortedRows.value.length)
-
-// Infinite scroll
-const sentinelRef = ref<HTMLElement | null>(null)
-onMounted(() => {
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (entries[0]?.isIntersecting && hasMore.value) {
-        visibleCount.value += CHUNK_SIZE
-      }
-    },
-    { threshold: 0.1 },
-  )
-  watch(sentinelRef, (el) => {
-    if (el) observer.observe(el)
-  }, { immediate: true })
-  onUnmounted(() => observer.disconnect())
-})
-
-// ─── Helpers ────────────────────────────────────────────────
-function cellValue(row: any, key: string): string {
-  const val = row[key]
-  if (val === null || val === undefined || val === '') return '—'
-  return String(val)
-}
-
-function verifiedColor(val?: string) {
-  const s = (val || '').toLowerCase()
-  if (s === 'true' || s === 'verified' || s === 'yes') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-  if (s === 'false' || s === 'no') return 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-  return 'bg-muted text-muted-foreground'
-}
-
+// ─── Logo helper ────────────────────────────────────────────
 function logoUrl(row: any): string {
-  // image_url stores a GCS path like "images/etgLevel1/A6/image.png"
-  // Serve via the /api/gcs/ proxy (bucket is private)
   if (row.image_url && typeof row.image_url === 'string') {
     if (row.image_url.startsWith('http')) return row.image_url
     return `/api/gcs/${row.image_url}`
@@ -179,48 +127,29 @@ function logoUrl(row: any): string {
 
 <template>
   <div class="w-full flex-1 min-h-0 flex flex-col">
-    <!-- Toolbar -->
+    <!-- Toolbar in header -->
     <Teleport v-if="isMounted" to="#header-toolbar">
       <div class="flex items-center gap-2 w-full justify-end">
         <div class="relative max-w-[220px]">
-          <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input v-model="search" placeholder="Search entities..." class="pl-8 h-8 text-sm" />
+          <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+          <Input v-model="search" placeholder="Search level 2..." class="pl-8 h-8 text-sm" />
+          <button
+            v-if="search"
+            class="absolute right-2 top-1/2 -translate-y-1/2 size-4 rounded-full bg-muted-foreground/10 flex items-center justify-center hover:bg-muted-foreground/20 transition-colors"
+            @click="search = ''"
+          >
+            <Icon name="i-lucide-x" class="size-2.5 text-muted-foreground" />
+          </button>
         </div>
         <p class="text-xs text-muted-foreground tabular-nums hidden lg:block whitespace-nowrap">
-          {{ filteredRows.length }} record{{ filteredRows.length !== 1 ? 's' : '' }}
+          {{ searchedLevel2.length }} record{{ searchedLevel2.length !== 1 ? 's' : '' }}
         </p>
         <Button variant="ghost" size="sm" class="h-8" :disabled="syncing" @click="syncLevels()">
-          <Icon
-            name="i-lucide-refresh-cw"
-            class="size-3.5"
-            :class="syncing ? 'animate-spin' : ''"
-          />
+          <Icon name="i-lucide-refresh-cw" class="size-3.5" :class="syncing ? 'animate-spin' : ''" />
           <span v-if="syncing" class="ml-1 text-xs">Syncing...</span>
         </Button>
       </div>
     </Teleport>
-
-    <!-- Tabs -->
-    <div class="shrink-0 border-b px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
-      <button
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5"
-        :class="activeTab === tab.key
-          ? 'bg-primary text-primary-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
-        @click="activeTab = tab.key"
-      >
-        <Icon :name="tab.icon" class="size-3.5" />
-        {{ tab.label }}
-        <span
-          class="ml-0.5 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full"
-          :class="activeTab === tab.key ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-foreground/60'"
-        >
-          {{ tab.count }}
-        </span>
-      </button>
-    </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex-1 flex items-center justify-center">
@@ -230,114 +159,176 @@ function logoUrl(row: any): string {
       </div>
     </div>
 
-    <!-- Data Table -->
-    <div v-else class="flex-1 min-h-0 overflow-auto">
-      <Table>
-        <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
-          <TableRow class="border-b-0">
-            <TableHead
-              v-for="col in currentColumns"
-              :key="col.key"
-              class="bg-card cursor-pointer select-none whitespace-nowrap"
-              :style="{ minWidth: col.width }"
-              @click="toggleSort(col.key)"
-            >
-              <div class="flex items-center gap-1">
-                {{ col.label }}
-                <Icon :name="sortIcon(col.key)" class="size-3 opacity-60" />
-              </div>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
+    <!-- Main: Sidebar + Table -->
+    <div v-else class="flex-1 min-h-0 flex">
 
-        <TableBody>
-          <TableRow
-            v-for="(row, idx) in visibleRows"
-            :key="row.A7 || row.A8 || row.A9 || idx"
-            class="group"
+      <!-- Level 1 sidebar -->
+      <div
+        class="w-[300px] shrink-0 border-r flex flex-col min-h-0 bg-card"
+        :class="appLang === 'ar' ? 'order-2 border-r-0 border-l' : ''"
+      >
+        <!-- Header -->
+        <div class="px-4 py-3 border-b">
+          <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {{ appLang === 'ar' ? 'المستوى الأول' : 'Level 1' }}
+          </p>
+        </div>
+
+        <!-- Level 1 list -->
+        <div class="flex-1 overflow-y-auto scrollbar-thin">
+          <button
+            v-for="l1 in level1"
+            :key="l1.A7"
+            class="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] transition-colors border-b border-border/30"
+            :class="selectedLevel1Id === l1.A7
+              ? 'bg-primary/10 text-primary font-medium'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'"
+            @click="selectedLevel1Id = l1.A7"
           >
-            <TableCell v-for="col in currentColumns" :key="col.key">
-              <!-- Logo image (Level 1 only) -->
-              <template v-if="col.key === 'logo'">
-                <div class="size-8 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
-                  <img
-                    v-if="logoUrl(row)"
-                    :src="logoUrl(row)"
-                    :alt="row.eng"
-                    class="size-8 object-contain"
-                    @error="($event.target as HTMLImageElement).style.display = 'none'"
-                  />
-                  <Icon v-else name="i-lucide-image" class="size-4 text-muted-foreground/40" />
-                </div>
-              </template>
+            <!-- Logo -->
+            <div class="size-7 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
+              <img
+                v-if="logoUrl(l1)"
+                :src="logoUrl(l1)"
+                :alt="l1.eng"
+                class="size-7 object-contain"
+                @error="($event.target as HTMLImageElement).style.display = 'none'"
+              />
+              <Icon v-else name="i-lucide-building-2" class="size-3.5 text-muted-foreground/40" />
+            </div>
 
-              <!-- Name (English) with icon -->
-              <template v-else-if="col.key === 'eng'">
-                <div class="flex items-center gap-2">
-                  <div v-if="activeTab !== 'level1'" class="size-7 rounded-lg bg-gradient-to-br from-blue-500/10 to-violet-500/10 flex items-center justify-center shrink-0">
+            <!-- Name -->
+            <span class="truncate flex-1" :class="appLang === 'ar' ? 'text-right' : 'text-left'">
+              {{ lang(l1) || l1.A7 }}
+            </span>
+
+            <!-- Count badge -->
+            <span
+              class="text-[10px] tabular-nums shrink-0 px-1.5 py-0.5 rounded-full"
+              :class="selectedLevel1Id === l1.A7 ? 'bg-primary/20 text-primary' : 'bg-muted text-foreground/70'"
+            >
+              {{ level2CountForLevel1(l1.A7) }}
+            </span>
+          </button>
+
+          <!-- Empty -->
+          <div v-if="level1.length === 0" class="py-8 text-center text-muted-foreground">
+            <Icon name="i-lucide-building-2" class="size-6 mx-auto mb-2 opacity-40" />
+            <p class="text-xs">{{ appLang === 'ar' ? 'لا يوجد مستوى أول' : 'No Level 1 entities' }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Level 2 table with Level 3 accordion -->
+      <div class="flex-1 min-h-0 overflow-auto" :class="appLang === 'ar' ? 'order-1' : ''">
+        <Table>
+          <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
+            <TableRow class="border-b-0">
+              <TableHead class="bg-card w-10" />
+              <TableHead class="bg-card">
+                {{ appLang === 'ar' ? 'المستوى الثاني' : 'Level 2 Name' }}
+              </TableHead>
+              <TableHead class="bg-card text-center w-[100px]">
+                {{ appLang === 'ar' ? 'المستوى الثالث' : 'Level 3s' }}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+            <template v-for="l2 in searchedLevel2" :key="l2.A8">
+              <!-- Level 2 Row -->
+              <TableRow
+                class="group cursor-pointer transition-colors"
+                :class="isExpanded(l2.A8) ? 'bg-primary/5' : 'hover:bg-muted/30'"
+                @click="toggleLevel2(l2.A8)"
+              >
+                <!-- Expand chevron -->
+                <TableCell class="w-10 px-3">
+                  <div
+                    class="size-6 rounded-md flex items-center justify-center transition-all"
+                    :class="isExpanded(l2.A8)
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground group-hover:bg-muted'"
+                  >
                     <Icon
-                      :name="activeTab === 'level2' ? 'i-lucide-building' : 'i-lucide-map'"
-                      class="size-3.5 text-blue-600 dark:text-blue-400"
+                      name="i-lucide-chevron-right"
+                      class="size-3.5 transition-transform duration-200"
+                      :class="isExpanded(l2.A8) ? 'rotate-90' : ''"
                     />
                   </div>
-                  <span class="font-medium">{{ row.eng || '—' }}</span>
+                </TableCell>
+
+                <!-- Name -->
+                <TableCell>
+                  <div class="flex items-center gap-2.5">
+                    <div class="size-7 rounded-lg bg-gradient-to-br from-blue-500/10 to-violet-500/10 flex items-center justify-center shrink-0">
+                      <Icon name="i-lucide-building" class="size-3.5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <span
+                      class="font-medium text-sm"
+                      :dir="appLang === 'ar' ? 'rtl' : 'ltr'"
+                    >{{ lang(l2) || l2.A8 }}</span>
+                  </div>
+                </TableCell>
+
+                <!-- Level 3 count -->
+                <TableCell class="text-center">
+                  <Badge
+                    v-if="level3CountForLevel2(l2.A8) > 0"
+                    variant="outline"
+                    class="bg-violet-500/10 text-violet-600 border-violet-500/20 text-[10px] tabular-nums"
+                  >
+                    {{ level3CountForLevel2(l2.A8) }}
+                  </Badge>
+                  <span v-else class="text-muted-foreground/40 text-xs">0</span>
+                </TableCell>
+              </TableRow>
+
+              <!-- Level 3 Accordion Content -->
+              <TableRow v-if="isExpanded(l2.A8) && level3ForLevel2(l2.A8).length > 0" class="bg-muted/20">
+                <TableCell :colspan="3" class="p-0">
+                  <div class="border-l-2 border-primary/30 mx-6 my-2">
+                    <div
+                      v-for="(l3, idx) in level3ForLevel2(l2.A8)"
+                      :key="l3.A9 || idx"
+                      class="flex items-center gap-2.5 px-4 py-2 text-sm transition-colors hover:bg-muted/50"
+                      :class="idx !== level3ForLevel2(l2.A8).length - 1 ? 'border-b border-border/20' : ''"
+                    >
+                      <div class="size-6 rounded-md bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center shrink-0">
+                        <Icon name="i-lucide-map" class="size-3 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <span
+                        class="text-foreground/80"
+                        :dir="appLang === 'ar' ? 'rtl' : 'ltr'"
+                      >{{ lang(l3) || l3.A9 }}</span>
+                    </div>
+                  </div>
+                </TableCell>
+              </TableRow>
+
+              <!-- No Level 3s message -->
+              <TableRow v-else-if="isExpanded(l2.A8)" class="bg-muted/20">
+                <TableCell :colspan="3" class="py-4">
+                  <div class="flex items-center justify-center gap-2 text-muted-foreground/60 text-xs">
+                    <Icon name="i-lucide-inbox" class="size-4" />
+                    {{ appLang === 'ar' ? 'لا يوجد مستوى ثالث' : 'No Level 3 records' }}
+                  </div>
+                </TableCell>
+              </TableRow>
+            </template>
+
+            <!-- Empty state -->
+            <TableRow v-if="searchedLevel2.length === 0">
+              <TableCell :colspan="3" class="h-32 text-center">
+                <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                  <Icon name="i-lucide-inbox" class="size-8" />
+                  <p>{{ appLang === 'ar' ? 'لا توجد نتائج' : 'No Level 2 entities found' }}</p>
                 </div>
-              </template>
-
-              <!-- Arabic name (RTL) -->
-              <template v-else-if="col.key === 'arabic'">
-                <span dir="rtl" class="text-sm text-muted-foreground">{{ row.arabic || '—' }}</span>
-              </template>
-
-              <!-- Verified badge -->
-              <template v-else-if="col.key === 'A276'">
-                <Badge v-if="row.A276" variant="outline" :class="verifiedColor(row.A276)" class="text-[10px]">
-                  {{ row.A276 === 'true' || row.A276 === 'Verified' ? 'Verified' : row.A276 }}
-                </Badge>
-                <span v-else class="text-muted-foreground/40">—</span>
-              </template>
-
-              <!-- Level 1 reference (show resolved label if available) -->
-              <template v-else-if="col.key === 'A7' && activeTab !== 'level1'">
-                <Badge v-if="row.A7_label || row.A7" variant="outline" class="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]">
-                  {{ row.A7_label || row.A7 }}
-                </Badge>
-                <span v-else class="text-muted-foreground/40">—</span>
-              </template>
-
-              <!-- Level 2 reference -->
-              <template v-else-if="col.key === 'A8' && activeTab === 'level3'">
-                <Badge v-if="row.A8_label || row.A8" variant="outline" class="bg-violet-500/10 text-violet-600 border-violet-500/20 text-[10px]">
-                  {{ row.A8_label || row.A8 }}
-                </Badge>
-                <span v-else class="text-muted-foreground/40">—</span>
-              </template>
-
-              <!-- Default text -->
-              <template v-else>
-                <span class="text-sm whitespace-nowrap">{{ cellValue(row, col.key) }}</span>
-              </template>
-            </TableCell>
-          </TableRow>
-
-          <!-- Empty State -->
-          <TableRow v-if="visibleRows.length === 0 && !loading">
-            <TableCell :colspan="currentColumns.length" class="h-32 text-center">
-              <div class="flex flex-col items-center gap-2 text-muted-foreground">
-                <Icon name="i-lucide-inbox" class="size-8" />
-                <p>No entities found</p>
-              </div>
-            </TableCell>
-          </TableRow>
-
-          <!-- Infinite scroll sentinel -->
-          <tr v-if="hasMore" ref="sentinelRef">
-            <td :colspan="currentColumns.length" class="h-10 text-center text-xs text-muted-foreground">
-              Loading more…
-            </td>
-          </tr>
-        </TableBody>
-      </Table>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
     </div>
   </div>
 </template>

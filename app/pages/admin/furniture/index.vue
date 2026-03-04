@@ -18,6 +18,9 @@ const total = ref(0)
 const totalPages = ref(0)
 const allLoaded = ref(false)
 
+// View mode: table or gallery
+const viewMode = ref<'table' | 'gallery'>('table')
+
 // Sync / actions state
 const syncing = ref(false)
 const syncAction = ref<'smart' | 'full' | 'dedup' | 'images' | ''>('')
@@ -410,6 +413,115 @@ const sortedRows = computed(() => {
   })
 })
 
+// ─── Gallery View: Group by Floor (A8) → Room (A9) ────────
+interface GalleryRoom {
+  key: string
+  label: string
+  items: any[]
+}
+interface GalleryFloor {
+  key: string
+  label: string
+  rooms: GalleryRoom[]
+  totalCount: number
+}
+
+const expandedFloors = ref<Set<string>>(new Set())
+const expandedRooms = ref<Set<string>>(new Set())
+
+function toggleFloor(floorKey: string) {
+  const s = new Set(expandedFloors.value)
+  if (s.has(floorKey)) s.delete(floorKey)
+  else s.add(floorKey)
+  expandedFloors.value = s
+}
+
+function toggleRoom(roomKey: string) {
+  const s = new Set(expandedRooms.value)
+  if (s.has(roomKey)) s.delete(roomKey)
+  else s.add(roomKey)
+  expandedRooms.value = s
+}
+
+const galleryGroups = computed<GalleryFloor[]>(() => {
+  const floorMap: Record<string, Record<string, any[]>> = {}
+  for (const row of sortedRows.value) {
+    const floor = row.A8 || '__unknown__'
+    const room = row.A9 || '__unknown__'
+    if (!floorMap[floor]) floorMap[floor] = {}
+    if (!floorMap[floor]![room]) floorMap[floor]![room] = []
+    floorMap[floor]![room]!.push(row)
+  }
+  const floors: GalleryFloor[] = []
+  for (const [floorKey, rooms] of Object.entries(floorMap)) {
+    const roomList: GalleryRoom[] = []
+    let totalCount = 0
+    for (const [roomKey, items] of Object.entries(rooms)) {
+      roomList.push({
+        key: roomKey,
+        label: roomKey === '__unknown__' ? 'Unknown Room' : resolveLevel3(roomKey),
+        items,
+      })
+      totalCount += items.length
+    }
+    // Sort rooms by label
+    roomList.sort((a, b) => a.label.localeCompare(b.label))
+    floors.push({
+      key: floorKey,
+      label: floorKey === '__unknown__' ? 'Unknown Floor' : resolveLevel2(floorKey),
+      rooms: roomList,
+      totalCount,
+    })
+  }
+  // Sort floors by label
+  floors.sort((a, b) => a.label.localeCompare(b.label))
+  return floors
+})
+
+// Auto-expand first floor when switching to gallery
+watch(viewMode, (mode) => {
+  if (mode === 'gallery' && galleryGroups.value.length > 0 && expandedFloors.value.size === 0) {
+    expandedFloors.value = new Set([galleryGroups.value[0]!.key])
+    const firstFloor = galleryGroups.value[0]!
+    if (firstFloor.rooms.length > 0) {
+      expandedRooms.value = new Set([`${firstFloor.key}/${firstFloor.rooms[0]!.key}`])
+    }
+  }
+})
+
+function conditionChipClass(val?: string): string {
+  if (!val) return 'bg-zinc-800/70 text-zinc-300'
+  if (['Good', '3', 'Excellent'].includes(val)) return 'bg-emerald-600/90 text-white'
+  if (['Fair', '2', 'Average'].includes(val)) return 'bg-amber-500/90 text-white'
+  if (['Poor', '1', 'Bad', 'Damaged'].includes(val)) return 'bg-red-600/90 text-white'
+  return 'bg-zinc-700/80 text-zinc-200'
+}
+
+function conditionIcon(val?: string): string {
+  if (!val) return 'i-lucide-help-circle'
+  if (['Good', '3', 'Excellent'].includes(val)) return 'i-lucide-check-circle-2'
+  if (['Fair', '2', 'Average'].includes(val)) return 'i-lucide-alert-triangle'
+  if (['Poor', '1', 'Bad', 'Damaged'].includes(val)) return 'i-lucide-x-circle'
+  return 'i-lucide-help-circle'
+}
+
+function formatTimestamp(ts?: string): string {
+  if (!ts) return '—'
+  try {
+    const d = new Date(ts)
+    if (isNaN(d.getTime())) {
+      // Try M/D/YYYY HH:mm:ss format
+      const parts = ts.match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+)/)
+      if (parts) {
+        const [, m, day, y, h, min] = parts
+        return `${day}/${m}/${y} ${h}:${min}`
+      }
+      return ts
+    }
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  } catch { return ts }
+}
+
 // Image lightbox
 const lightboxSrc = ref('')
 const showLightbox = ref(false)
@@ -421,13 +533,24 @@ function openLightbox(src: string) {
 }
 
 function imageUrl(row: any, col: string): string {
-  // Only use the _url column (set by image sync with valid GCS paths)
-  // Raw columns (A69/A71/A72) contain Google Drive paths — NOT GCS paths
+  // Primary: use the _url column (set by image sync with valid GCS paths)
   const gcsPath = row[col + '_url']
   if (gcsPath && typeof gcsPath === 'string' && gcsPath.trim()) {
     if (gcsPath.startsWith('http')) return gcsPath
-    // Validate: must look like a proper GCS path (contains /)
     if (gcsPath.includes('/')) return `/api/gcs/${gcsPath}`
+  }
+  // Fallback: try to construct GCS path from the raw column value
+  // Raw columns (A69/A71/A72) contain AppSheet paths like "Furniture_Images/filename.jpg"
+  // The image sync uploads to: furniture/{A7}/{A8}/{A9}/{filename}
+  const rawPath = row[col]
+  if (rawPath && typeof rawPath === 'string' && rawPath.trim()) {
+    const fileName = rawPath.includes('/') ? rawPath.split('/').pop() : rawPath
+    if (fileName && fileName.includes('.')) {
+      const a7 = row.A7 || '_'
+      const a8 = row.A8 || '_'
+      const a9 = row.A9 || '_'
+      return `/api/gcs/furniture/${a7}/${a8}/${a9}/${fileName}`
+    }
   }
   return ''
 }
@@ -454,6 +577,33 @@ function statusLabel(status: string) {
     <!-- Toolbar -->
     <Teleport v-if="isMounted" to="#header-toolbar">
       <div class="flex items-center gap-2 w-full justify-end">
+        <!-- View Mode Toggle -->
+        <div class="flex items-center h-8 rounded-lg border bg-muted/50 p-0.5 gap-0.5">
+          <button
+            class="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all"
+            :class="viewMode === 'table'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'"
+            @click="viewMode = 'table'"
+          >
+            <Icon name="i-lucide-table-2" class="size-3.5" />
+            <span class="hidden sm:inline">Table</span>
+          </button>
+          <button
+            class="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all"
+            :class="viewMode === 'gallery'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'"
+            @click="viewMode = 'gallery'"
+          >
+            <Icon name="i-lucide-layout-grid" class="size-3.5" />
+            <span class="hidden sm:inline">Gallery</span>
+          </button>
+        </div>
+
+        <!-- Separator -->
+        <div class="h-5 w-px bg-border hidden sm:block" />
+
         <!-- Search in header -->
         <div class="relative max-w-[200px]">
           <Icon name="i-lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
@@ -763,8 +913,8 @@ function statusLabel(status: string) {
       </div>
     </div>
 
-    <!-- Data Table -->
-    <div v-else ref="scrollContainerRef" class="flex-1 min-h-0 overflow-auto">
+    <!-- ═══ TABLE VIEW ══════════════════════════════════════ -->
+    <div v-else-if="viewMode === 'table'" ref="scrollContainerRef" class="flex-1 min-h-0 overflow-auto">
       <Table>
         <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
           <TableRow class="border-b-0">
@@ -934,6 +1084,204 @@ function statusLabel(status: string) {
           </TableRow>
         </TableBody>
       </Table>
+      <!-- Infinite scroll sentinel -->
+      <div ref="scrollSentinelRef" class="h-1" />
+    </div>
+
+    <!-- ═══ GALLERY VIEW ═══════════════════════════════════ -->
+    <div v-else-if="viewMode === 'gallery'" ref="scrollContainerRef" class="flex-1 min-h-0 overflow-auto">
+      <div class="p-4 space-y-3">
+        <!-- Empty state -->
+        <div v-if="galleryGroups.length === 0" class="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+          <div class="size-16 rounded-2xl bg-muted/50 flex items-center justify-center">
+            <Icon name="i-lucide-inbox" class="size-8 text-muted-foreground/40" />
+          </div>
+          <p class="font-medium text-foreground/60">No assets to display</p>
+        </div>
+
+        <!-- Floor groups -->
+        <div v-for="floor in galleryGroups" :key="floor.key" class="rounded-xl border bg-card/50 overflow-hidden">
+          <!-- Floor header -->
+          <button
+            class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+            :class="expandedFloors.has(floor.key) ? 'bg-muted/20 border-b' : ''"
+            @click="toggleFloor(floor.key)"
+          >
+            <div
+              class="size-8 rounded-lg flex items-center justify-center shrink-0 transition-colors"
+              :class="expandedFloors.has(floor.key)
+                ? 'bg-blue-500/15 text-blue-500'
+                : 'bg-muted text-muted-foreground'"
+            >
+              <Icon name="i-lucide-building" class="size-4" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-sm text-foreground truncate" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">{{ floor.label }}</p>
+              <p class="text-[11px] text-muted-foreground">{{ floor.rooms.length }} room{{ floor.rooms.length !== 1 ? 's' : '' }}</p>
+            </div>
+            <span class="text-xs font-medium tabular-nums px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              {{ floor.totalCount.toLocaleString() }}
+            </span>
+            <Icon
+              name="i-lucide-chevron-right"
+              class="size-4 text-muted-foreground transition-transform duration-200 shrink-0"
+              :class="expandedFloors.has(floor.key) ? 'rotate-90' : ''"
+            />
+          </button>
+
+          <!-- Floor content (rooms) -->
+          <div v-if="expandedFloors.has(floor.key)" class="divide-y divide-border/30">
+            <div v-for="room in floor.rooms" :key="room.key">
+              <!-- Room header -->
+              <button
+                class="w-full flex items-center gap-2.5 px-6 py-2.5 text-left transition-colors hover:bg-muted/20"
+                :class="expandedRooms.has(`${floor.key}/${room.key}`) ? 'bg-muted/10' : ''"
+                @click="toggleRoom(`${floor.key}/${room.key}`)"
+              >
+                <div
+                  class="size-6 rounded-md flex items-center justify-center shrink-0"
+                  :class="expandedRooms.has(`${floor.key}/${room.key}`)
+                    ? 'bg-violet-500/15 text-violet-500'
+                    : 'bg-muted/60 text-muted-foreground'"
+                >
+                  <Icon name="i-lucide-door-open" class="size-3.5" />
+                </div>
+                <span class="flex-1 text-[13px] font-medium truncate" :dir="appLang === 'ar' ? 'rtl' : 'ltr'">
+                  {{ room.label }}
+                </span>
+                <span
+                  class="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full"
+                  :class="expandedRooms.has(`${floor.key}/${room.key}`)
+                    ? 'bg-violet-500/10 text-violet-500'
+                    : 'bg-muted text-muted-foreground'"
+                >
+                  {{ room.items.length }}
+                </span>
+                <Icon
+                  name="i-lucide-chevron-right"
+                  class="size-3.5 text-muted-foreground transition-transform duration-200 shrink-0"
+                  :class="expandedRooms.has(`${floor.key}/${room.key}`) ? 'rotate-90' : ''"
+                />
+              </button>
+
+              <!-- Room items (gallery cards) -->
+              <div
+                v-if="expandedRooms.has(`${floor.key}/${room.key}`)"
+                class="px-6 py-4 bg-muted/5"
+              >
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+                  <div
+                    v-for="(item, idx) in room.items"
+                    :key="item.ID || idx"
+                    class="group rounded-xl border bg-card overflow-hidden hover:shadow-lg hover:shadow-black/5 hover:border-primary/20 transition-all duration-300"
+                  >
+                    <!-- Asset Image with condition chip overlay -->
+                    <div class="relative aspect-[4/3] bg-muted/30 overflow-hidden">
+                      <img
+                        v-if="imageUrl(item, 'A69') && !isImageFailed(`${item.ID}-gallery-A69`)"
+                        :src="imageUrl(item, 'A69')"
+                        :alt="item.A70"
+                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        loading="lazy"
+                        @click="openLightbox(imageUrl(item, 'A69'))"
+                        @error="onImageError(`${item.ID}-gallery-A69`)"
+                      />
+                      <div v-else class="w-full h-full flex items-center justify-center">
+                        <div class="flex flex-col items-center gap-2 text-muted-foreground/30">
+                          <Icon name="i-lucide-image" class="size-10" />
+                          <span class="text-[10px]">No Image</span>
+                        </div>
+                      </div>
+
+                      <!-- Condition chip overlay (top-left) -->
+                      <div v-if="item.A75" class="absolute top-2 left-2">
+                        <span
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold shadow-lg backdrop-blur-sm"
+                          :class="conditionChipClass(item.A75)"
+                        >
+                          <Icon :name="conditionIcon(item.A75)" class="size-3" />
+                          {{ resolveLang(item.A75) }}
+                        </span>
+                      </div>
+
+                      <!-- Asset code badge (top-right) -->
+                      <div v-if="item.A70" class="absolute top-2 right-2">
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-black/60 text-white shadow-lg backdrop-blur-sm">
+                          <Icon name="i-lucide-tag" class="size-3" />
+                          {{ item.A70 }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- Tag Comparison: Old vs New -->
+                    <div class="border-t">
+                      <div class="flex items-center justify-center gap-0.5 px-2 py-1.5 bg-muted/20">
+                        <span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Tag Comparison</span>
+                      </div>
+                      <div class="grid grid-cols-2 divide-x divide-border/30">
+                        <!-- Old Tag (A71) -->
+                        <div class="p-1.5">
+                          <p class="text-[9px] font-medium text-muted-foreground text-center mb-1 uppercase tracking-wider">Old Tag</p>
+                          <div
+                            class="aspect-square rounded-lg overflow-hidden bg-muted/30 ring-1 ring-border/30 cursor-pointer hover:ring-red-400/50 transition-all"
+                            @click="openLightbox(imageUrl(item, 'A71'))"
+                          >
+                            <img
+                              v-if="imageUrl(item, 'A71') && !isImageFailed(`${item.ID}-gallery-A71`)"
+                              :src="imageUrl(item, 'A71')"
+                              :alt="'Old Tag'"
+                              class="w-full h-full object-cover"
+                              loading="lazy"
+                              @error="onImageError(`${item.ID}-gallery-A71`)"
+                            />
+                            <div v-else class="w-full h-full flex items-center justify-center">
+                              <Icon name="i-lucide-image-off" class="size-4 text-muted-foreground/20" />
+                            </div>
+                          </div>
+                        </div>
+                        <!-- New Tag (A72) -->
+                        <div class="p-1.5">
+                          <p class="text-[9px] font-medium text-muted-foreground text-center mb-1 uppercase tracking-wider">New Tag</p>
+                          <div
+                            class="aspect-square rounded-lg overflow-hidden bg-muted/30 ring-1 ring-border/30 cursor-pointer hover:ring-emerald-400/50 transition-all"
+                            @click="openLightbox(imageUrl(item, 'A72'))"
+                          >
+                            <img
+                              v-if="imageUrl(item, 'A72') && !isImageFailed(`${item.ID}-gallery-A72`)"
+                              :src="imageUrl(item, 'A72')"
+                              :alt="'New Tag'"
+                              class="w-full h-full object-cover"
+                              loading="lazy"
+                              @error="onImageError(`${item.ID}-gallery-A72`)"
+                            />
+                            <div v-else class="w-full h-full flex items-center justify-center">
+                              <Icon name="i-lucide-image-off" class="size-4 text-muted-foreground/20" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Footer: User + Timestamp -->
+                    <div class="px-3 py-2 border-t bg-muted/10 flex items-center gap-2">
+                      <div class="size-6 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 flex items-center justify-center shrink-0">
+                        <Icon name="i-lucide-user" class="size-3 text-blue-500" />
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-[11px] font-medium text-foreground truncate">{{ resolveUser(item.A2) || '—' }}</p>
+                        <p class="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Icon name="i-lucide-clock" class="size-2.5 shrink-0" />
+                          {{ formatTimestamp(item.A213) }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <!-- Infinite scroll sentinel -->
       <div ref="scrollSentinelRef" class="h-1" />
     </div>
