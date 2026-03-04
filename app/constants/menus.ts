@@ -54,11 +54,6 @@ export const navMenu: NavMenu[] = [
         icon: 'i-lucide-armchair',
         link: '/reports/furniture',
       },
-      {
-        title: 'PM Weekly',
-        icon: 'i-lucide-calendar-range',
-        link: '/reports/pm-weekly',
-      },
     ],
   },
 ]
