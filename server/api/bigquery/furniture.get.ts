@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
         const a8 = query.a8 as string || ''
         const a9 = query.a9 as string || ''
         const page = Math.max(1, Number(query.page) || 1)
-        const limit = Math.min(500, Math.max(10, Number(query.limit) || 100))
+        const limit = Math.min(10000, Math.max(10, Number(query.limit) || 100))
         const search = (query.search as string || '').trim()
         const offset = (page - 1) * limit
 

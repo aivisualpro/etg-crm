@@ -36,29 +36,39 @@ const dateTo = ref('')
 // Per-filter search
 const filterSearch = reactive({ level1: '', level2: '', level3: '', subCat: '', condition: '', user: '' })
 
-// ─── Fetch furniture rows (report needs all rows) ───────────
+// ─── Fetch furniture rows (report needs ALL rows) ───────────
+const BATCH = 5000
+const loadProgress = ref(0) // 0-100
+
 async function fetchAll() {
   loading.value = true
+  loadProgress.value = 0
   try {
-    const furnitureData = await $fetch<{ success: boolean, rows: any[], total: number }>('/api/bigquery/furniture', { params: { limit: 500, page: 1 } })
+    // First request to get total count + first batch
+    const first = await $fetch<{ success: boolean, rows: any[], total: number, totalPages: number }>('/api/bigquery/furniture', { params: { limit: BATCH, page: 1 } })
+    rows.value = first.rows || []
+    const totalRows = first.total || 0
+    const totalPages = Math.ceil(totalRows / BATCH)
+    loadProgress.value = Math.round((1 / totalPages) * 100)
 
-    rows.value = furnitureData.rows || []
-
-    // Also fetch remaining pages if total > 500
-    const totalRows = furnitureData.total || 0
-    if (totalRows > 500) {
-      const totalPages = Math.ceil(totalRows / 500)
-      const pagePromises = []
-      for (let p = 2; p <= Math.min(totalPages, 20); p++) {
-        pagePromises.push(
-          $fetch<{ rows: any[] }>('/api/bigquery/furniture', { params: { limit: 500, page: p } }),
-        )
-      }
-      const pages = await Promise.all(pagePromises)
-      for (const pg of pages) {
-        rows.value.push(...(pg.rows || []))
+    if (totalPages > 1) {
+      // Fetch remaining pages in parallel waves of 6
+      const WAVE_SIZE = 6
+      for (let start = 2; start <= totalPages; start += WAVE_SIZE) {
+        const wave = []
+        for (let p = start; p <= Math.min(start + WAVE_SIZE - 1, totalPages); p++) {
+          wave.push(
+            $fetch<{ rows: any[] }>('/api/bigquery/furniture', { params: { limit: BATCH, page: p } }),
+          )
+        }
+        const results = await Promise.all(wave)
+        for (const pg of results) {
+          rows.value.push(...(pg.rows || []))
+        }
+        loadProgress.value = Math.round((Math.min(start + WAVE_SIZE - 1, totalPages) / totalPages) * 100)
       }
     }
+    loadProgress.value = 100
   }
   catch (e: any) {
     toast.error('Failed to load report data')
@@ -81,13 +91,31 @@ function resolveAD(key: string) { return rl(assetDescMap.value, key) }
 function resolveUser(key: string) { return usersMap.value[key] || key }
 
 // ─── Filter logic ───────────────────────────────────────────
+// Level 2: merge by resolved name (multiple IDs can share the same name)
+const level2NameToIds = computed(() => {
+  const map: Record<string, Set<string>> = {}
+  for (const r of rows.value) {
+    const id = r.A8; if (!id) continue
+    const name = resolveL2(id)
+    if (!map[name]) map[name] = new Set()
+    map[name].add(id)
+  }
+  return Object.fromEntries(Object.entries(map).map(([k, v]) => [k, [...v]]))
+})
+
 function filterExcluding(excludeKey: string): any[] {
   let recs = [...rows.value]
   if (excludeKey !== 'level1' && selLevel1.value.length) recs = recs.filter(r => selLevel1.value.includes(r.A7))
-  if (excludeKey !== 'level2' && selLevel2.value.length) recs = recs.filter(r => selLevel2.value.includes(r.A8))
+  if (excludeKey !== 'level2' && selLevel2.value.length) {
+    const ids = new Set<string>()
+    for (const name of selLevel2.value) {
+      for (const id of (level2NameToIds.value[name] || [])) ids.add(id)
+    }
+    recs = recs.filter(r => ids.has(r.A8))
+  }
   if (excludeKey !== 'level3' && selLevel3.value.length) recs = recs.filter(r => selLevel3.value.includes(r.A9))
   if (excludeKey !== 'subCat' && selSubCat.value.length) recs = recs.filter(r => selSubCat.value.includes(r.A66))
-  if (excludeKey !== 'condition' && selCondition.value.length) recs = recs.filter(r => selCondition.value.includes(r.A68))
+  if (excludeKey !== 'condition' && selCondition.value.length) recs = recs.filter(r => selCondition.value.includes(r.A75))
   if (excludeKey !== 'user' && selUser.value.length) recs = recs.filter(r => selUser.value.includes(r.A2))
   return recs
 }
@@ -120,14 +148,26 @@ function userCountSorted(recs: any[]): { value: string, label: string, count: nu
 
 // Computed filter options
 const level1Opts = computed(() => countSorted(filterExcluding('level1'), 'A7', level1Map.value))
-const level2Opts = computed(() => countSorted(filterExcluding('level2'), 'A8', level2Map.value))
+// Level 2: group by resolved name so duplicates merge
+const level2Opts = computed(() => {
+  const recs = filterExcluding('level2')
+  const nameCounts: Record<string, number> = {}
+  for (const r of recs) {
+    const v = r.A8; if (!v) continue
+    const name = resolveL2(v)
+    nameCounts[name] = (nameCounts[name] || 0) + 1
+  }
+  return Object.entries(nameCounts)
+    .map(([label, count]) => ({ value: label, label, count }))
+    .sort((a, b) => b.count - a.count)
+})
 const level3Opts = computed(() => countSorted(filterExcluding('level3'), 'A9', level3Map.value))
 const subCatOpts = computed(() => countSorted(filterExcluding('subCat'), 'A66', subCatMap.value))
 const conditionOpts = computed(() => {
   const recs = filterExcluding('condition')
   const counts: Record<string, number> = {}
   for (const r of recs) {
-    const v = r.A68; if (!v) continue
+    const v = r.A75; if (!v) continue
     counts[v] = (counts[v] || 0) + 1
   }
   return Object.entries(counts)
@@ -180,10 +220,16 @@ function parseTS(val: string | undefined): Date | null {
 const filtered = computed(() => {
   let recs = [...rows.value]
   if (selLevel1.value.length) recs = recs.filter(r => selLevel1.value.includes(r.A7))
-  if (selLevel2.value.length) recs = recs.filter(r => selLevel2.value.includes(r.A8))
+  if (selLevel2.value.length) {
+    const ids = new Set<string>()
+    for (const name of selLevel2.value) {
+      for (const id of (level2NameToIds.value[name] || [])) ids.add(id)
+    }
+    recs = recs.filter(r => ids.has(r.A8))
+  }
   if (selLevel3.value.length) recs = recs.filter(r => selLevel3.value.includes(r.A9))
   if (selSubCat.value.length) recs = recs.filter(r => selSubCat.value.includes(r.A66))
-  if (selCondition.value.length) recs = recs.filter(r => selCondition.value.includes(r.A68))
+  if (selCondition.value.length) recs = recs.filter(r => selCondition.value.includes(r.A75))
   if (selUser.value.length) recs = recs.filter(r => selUser.value.includes(r.A2))
   if (dateFrom.value) { const f = new Date(dateFrom.value); recs = recs.filter(r => { const d = parseTS(r.A213); return d && d >= f }) }
   if (dateTo.value) { const t = new Date(dateTo.value); t.setHours(23, 59, 59, 999); recs = recs.filter(r => { const d = parseTS(r.A213); return d && d <= t }) }
@@ -202,7 +248,7 @@ const kpis = computed(() => {
   const entities: Set<string> = new Set()
   const users: Set<string> = new Set()
   for (const r of recs) {
-    if (r.A68) conditions[r.A68] = (conditions[r.A68] || 0) + 1
+    if (r.A75) conditions[r.A75] = (conditions[r.A75] || 0) + 1
     if (r.A7) entities.add(r.A7)
     if (r.A2) users.add(r.A2)
   }
@@ -346,6 +392,15 @@ function condColor(c: string) {
             <Icon name="i-lucide-loader-2" class="size-7 animate-spin text-blue-500" />
           </div>
           <p class="text-sm font-medium">Loading furniture report...</p>
+          <div v-if="loadProgress > 0" class="flex flex-col items-center gap-2">
+            <div class="h-1.5 w-48 rounded-full bg-muted overflow-hidden">
+              <div
+                class="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500 ease-out"
+                :style="{ width: `${loadProgress}%` }"
+              />
+            </div>
+            <p class="text-xs tabular-nums text-muted-foreground">{{ rows.length.toLocaleString() }} rows loaded · {{ loadProgress }}%</p>
+          </div>
         </div>
       </div>
 

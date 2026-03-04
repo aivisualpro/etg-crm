@@ -10,11 +10,13 @@ onMounted(() => { isMounted.value = true })
 // State
 const search = ref('')
 const loading = ref(true)
+const loadingMore = ref(false)
 const page = ref(1)
-const limit = ref(100)
+const limit = ref(500)
 const rows = ref<any[]>([])
 const total = ref(0)
 const totalPages = ref(0)
+const allLoaded = ref(false)
 
 // Sync / actions state
 const syncing = ref(false)
@@ -86,8 +88,9 @@ const dateTabs = [
 ]
 
 // Fetch data
-async function fetchData() {
-  loading.value = true
+async function fetchData(append = false) {
+  if (append) loadingMore.value = true
+  else loading.value = true
   try {
     const params: Record<string, string | number> = { page: page.value, limit: limit.value }
     if (search.value.trim()) params.search = search.value.trim()
@@ -99,18 +102,60 @@ async function fetchData() {
     }>('/api/bigquery/furniture', { params })
 
     if (data.success) {
-      rows.value = data.rows
+      if (append) {
+        rows.value.push(...(data.rows || []))
+      } else {
+        rows.value = data.rows
+      }
       total.value = data.total
       totalPages.value = data.totalPages
+      allLoaded.value = page.value >= data.totalPages
       if (data.dateCounts) dateCounts.value = data.dateCounts
     }
   }
   catch (e: any) {
     if (!e.message?.includes('Not found')) toast.error('Failed to load data')
   }
-  finally { loading.value = false }
+  finally {
+    loading.value = false
+    loadingMore.value = false
+  }
+}
+function loadMore() {
+  if (allLoaded.value || loadingMore.value) return
+  page.value++
+  fetchData(true)
 }
 fetchData()
+
+// Infinite scroll
+const scrollContainerRef = ref<HTMLElement>()
+const scrollSentinelRef = ref<HTMLElement>()
+let scrollObserver: IntersectionObserver | null = null
+
+function setupScrollObserver() {
+  scrollObserver?.disconnect()
+  nextTick(() => {
+    if (!scrollSentinelRef.value || !scrollContainerRef.value) return
+    scrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          loadMore()
+        }
+      },
+      { root: scrollContainerRef.value, rootMargin: '400px' },
+    )
+    scrollObserver.observe(scrollSentinelRef.value)
+  })
+}
+
+// Set up observer once loading finishes (sentinel appears in DOM)
+watch(loading, (val) => {
+  if (!val) setupScrollObserver()
+})
+onUnmounted(() => {
+  scrollObserver?.disconnect()
+})
 
 // ─── Global prefetched store (instant - no loading) ────────
 const {
@@ -159,12 +204,11 @@ function resolveUser(a2: string | undefined): string {
   return furnitureUsersMap.value[a2] || a2
 }
 
-watch(page, () => fetchData())
-watch(dateFilter, () => { page.value = 1; fetchData() })
+watch(dateFilter, () => { page.value = 1; allLoaded.value = false; fetchData() })
 let searchDebounce: ReturnType<typeof setTimeout>
 watch(search, () => {
   clearTimeout(searchDebounce)
-  searchDebounce = setTimeout(() => { page.value = 1; fetchData() }, 400)
+  searchDebounce = setTimeout(() => { page.value = 1; allLoaded.value = false; fetchData() }, 400)
 })
 
 // Sync composable
@@ -376,13 +420,19 @@ function openLightbox(src: string) {
 }
 
 function imageUrl(row: any, col: string): string {
+  // Prefer the _url column (set by image sync — trusted)
   const gcsPath = row[col + '_url']
   if (gcsPath && typeof gcsPath === 'string' && gcsPath.trim()) {
     return gcsPath.startsWith('http') ? gcsPath : `/api/gcs/${gcsPath}`
   }
+  // Fallback to raw column — only if it looks like an actual image path
   const rawPath = row[col]
   if (rawPath && typeof rawPath === 'string' && rawPath.includes('/')) {
-    return `/api/gcs/${rawPath}`
+    // Must have an image extension to be a valid image path
+    const lc = rawPath.toLowerCase()
+    if (/\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(lc) || lc.includes('furniture_images')) {
+      return `/api/gcs/${rawPath}`
+    }
   }
   return ''
 }
@@ -719,7 +769,7 @@ function statusLabel(status: string) {
     </div>
 
     <!-- Data Table -->
-    <div v-else class="flex-1 min-h-0 overflow-auto">
+    <div v-else ref="scrollContainerRef" class="flex-1 min-h-0 overflow-auto">
       <Table>
         <TableHeader class="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
           <TableRow class="border-b-0">
@@ -821,9 +871,27 @@ function statusLabel(status: string) {
               <template v-else-if="col.key === 'A75'">
                 <span
                   v-if="row.A75"
-                  class="text-sm whitespace-nowrap"
+                  class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ring-1"
+                  :class="{
+                    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20': row.A75 === 'Good' || row.A75 === '3' || row.A75 === 'Excellent',
+                    'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-amber-500/20': row.A75 === 'Fair' || row.A75 === '2' || row.A75 === 'Average',
+                    'bg-red-500/10 text-red-600 dark:text-red-400 ring-red-500/20': row.A75 === 'Poor' || row.A75 === '1' || row.A75 === 'Bad' || row.A75 === 'Damaged',
+                    'bg-muted text-muted-foreground ring-border': !['Good','Fair','Poor','Excellent','Average','Bad','Damaged','1','2','3'].includes(row.A75)
+                  }"
                   :dir="appLang === 'ar' ? 'rtl' : 'ltr'"
-                >{{ resolveLang(row.A75) }}</span>
+                >
+                  <Icon
+                    :name="(row.A75 === 'Good' || row.A75 === '3' || row.A75 === 'Excellent')
+                      ? 'i-lucide-check-circle-2'
+                      : (row.A75 === 'Fair' || row.A75 === '2' || row.A75 === 'Average')
+                        ? 'i-lucide-alert-triangle'
+                        : (row.A75 === 'Poor' || row.A75 === '1' || row.A75 === 'Bad' || row.A75 === 'Damaged')
+                          ? 'i-lucide-x-circle'
+                          : 'i-lucide-help-circle'"
+                    class="size-3 shrink-0"
+                  />
+                  {{ resolveLang(row.A75) }}
+                </span>
                 <span v-else class="text-sm text-muted-foreground">—</span>
               </template>
               <template v-else-if="col.key === 'A79'">
@@ -860,29 +928,19 @@ function statusLabel(status: string) {
               </div>
             </TableCell>
           </TableRow>
+          <!-- Loading more spinner row -->
+          <TableRow v-if="loadingMore">
+            <TableCell :colspan="columns.length" class="h-12 text-center">
+              <div class="flex items-center justify-center gap-2 text-muted-foreground">
+                <Icon name="i-lucide-loader-2" class="size-4 animate-spin text-primary" />
+                <span class="text-xs">Loading more...</span>
+              </div>
+            </TableCell>
+          </TableRow>
         </TableBody>
       </Table>
-    </div>
-
-    <!-- Pagination -->
-    <div v-if="totalPages > 1" class="shrink-0 border-t px-4 py-2 flex items-center justify-between gap-4 bg-card/50">
-      <p class="text-xs text-muted-foreground tabular-nums">
-        Page {{ page }} of {{ totalPages.toLocaleString() }} · {{ total.toLocaleString() }} total
-      </p>
-      <div class="flex items-center gap-1">
-        <Button variant="outline" size="sm" class="h-7 px-2 text-xs" :disabled="page <= 1" @click="page--">
-          <Icon name="i-lucide-chevron-left" class="size-3.5" /> Prev
-        </Button>
-        <template v-for="p in Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-          const start = Math.max(1, Math.min(page - 2, totalPages - 4))
-          return start + i
-        })" :key="p">
-          <Button :variant="p === page ? 'default' : 'outline'" size="sm" class="h-7 w-7 p-0 text-xs" @click="page = p">{{ p }}</Button>
-        </template>
-        <Button variant="outline" size="sm" class="h-7 px-2 text-xs" :disabled="page >= totalPages" @click="page++">
-          Next <Icon name="i-lucide-chevron-right" class="size-3.5" />
-        </Button>
-      </div>
+      <!-- Infinite scroll sentinel -->
+      <div ref="scrollSentinelRef" class="h-1" />
     </div>
 
     <!-- ═══ OVERLAYS ══════════════════════════════════════════ -->

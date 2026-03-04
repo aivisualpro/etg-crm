@@ -48,7 +48,10 @@ export default defineEventHandler(async (event) => {
     )
 
     if (!gcsRes.ok) {
-        throw createError({ statusCode: gcsRes.status, statusMessage: `GCS: ${gcsRes.statusText}` })
+        // Return 404 silently for missing images (avoids console noise)
+        setResponseStatus(event, gcsRes.status)
+        setResponseHeader(event, 'Cache-Control', 'public, max-age=3600')
+        return ''
     }
 
     // Determine content type from extension
