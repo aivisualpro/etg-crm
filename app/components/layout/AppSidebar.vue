@@ -45,8 +45,13 @@ const { resolve: resolveLang } = useAppLanguage()
 
 const userRole = computed(() => {
   const email = (authUser.value?.email || '').toLowerCase()
-  if (!email) return ''
-  const found = store.users.value.find((u: any) => (u.Email || '').toLowerCase() === email)
+  const name = (authUser.value?.name || '').trim()
+  if (!email && !name) return ''
+  // Try matching by email field (lowercase) first, then by name (A2)
+  const found = store.users.value.find((u: any) =>
+    (email && (u.email || '').toLowerCase() === email) ||
+    (name && (u.A2 || '').trim() === name)
+  )
   if (!found) return ''
   // Use the raw A200 code for language-aware resolution
   const rawCode = found.A200_raw || found.A200
